@@ -28,6 +28,11 @@ where $T_\mathrm{body}$ includes the translation of the center of gravity and th
 pitching of the body, and $T_\mathrm{wheels}$ is the spin of the wheels. Axle friction,
 rolling friction, and aerodynamic drag enter as non-conservative generalized forces.
 
+The model is documented piece by piece:
+
+- [Track models](tracks.md): how pwdsim describes track geometry, and the standard
+  tracks it includes.
+
 ## Getting started
 
 ```bash

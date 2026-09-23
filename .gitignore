@@ -18,3 +18,7 @@ coverage.xml
 
 # docs
 site/
+.cache/
+
+# notebooks are stored as jupytext percent scripts; don't commit paired .ipynb files
+*.ipynb

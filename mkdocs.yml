@@ -10,13 +10,25 @@ theme:
 
 nav:
   - Home: index.md
+  - Track models: tracks.md
+  - Examples:
+      - Forward model: examples/forward_model.py
+  - API reference: api.md
 
 plugins:
   - search
+  - mkdocs-jupyter:
+      include: ["examples/*.py"]
+      execute: true
+      include_source: true
   - mkdocstrings:
       handlers:
         python:
           paths: [src]
+          options:
+            docstring_style: google
+            show_source: false
+            members_order: source
 
 markdown_extensions:
   - admonition

@@ -15,6 +15,8 @@ Generally we expect users to use notebooks to interface with the package to actu
 
 A simple modern python package. Python 3.12, uv for environment and dependency management, src layout (`src/pwdsim`).  ruff for linting, pytest for testing, coverage.py for coverage checking, mkdocs for docs.  Pre-commit hooks to enforce basic formatting and linting.
 
+Example notebooks live in `docs/examples/` as jupytext percent-format `.py` scripts (never commit `.ipynb` files).  mkdocs-jupyter executes them when building the docs, and `tests/test_examples.py` runs them as smoke tests.
+
 Use float64 throughout the simulation.  Close races differ by ~1 ms over ~2.5 s, so float32 is too noisy for finish times and their gradients.
 
 ## Units

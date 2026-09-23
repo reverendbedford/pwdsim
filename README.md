@@ -87,6 +87,18 @@ uv run mkdocs serve                    # preview the docs locally
 uv run mkdocs build --strict           # build the docs
 ```
 
+### Example notebooks
+
+The example notebooks in `docs/examples/` are stored as
+[jupytext](https://jupytext.readthedocs.io/) percent-format `.py` scripts, so they
+diff cleanly and never carry outputs in version control. To work on one
+interactively, run `uv run jupyter lab` and open the `.py` file as a notebook
+(right-click → *Open With* → *Notebook*). Jupytext pairs it with a `.ipynb` file,
+which git ignores; edits are saved back to the `.py` script.
+
+The docs build executes the notebooks and renders their outputs, and
+`tests/test_examples.py` runs each one as a smoke test.
+
 ## License
 
 MIT; see [LICENSE](LICENSE).
