@@ -1,0 +1,32 @@
+site_name: pwdsim
+site_description: A pytorch Pinewood Derby simulator and optimizer
+repo_name: pwdsim
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+
+nav:
+  - Home: index.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js

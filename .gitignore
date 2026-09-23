@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+
+# testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# tooling
+.ruff_cache/
+.ipynb_checkpoints/
+
+# docs
+site/
