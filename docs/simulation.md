@@ -155,22 +155,22 @@ of motion $\dot{x} = (v, a)$ on a fixed time grid, with step `dt` for a total ti
 Euler is also available (`integrator="forward-euler"`).
 
 Both methods are first order: the error in the finish time is proportional to $dt$.
-Most of the error comes from the steps where an axle crosses a point where the
-track's curvature derivative jumps, such as the ends of the easements on a
-[`ramp_track`][pwdsim.track.ramp_track].  Over those steps the acceleration changes
-abruptly, and the error depends on where the crossing falls within the step, so it
-isn't a smooth function of $dt$.  The backward Euler method also loses a little
-energy, about 0.05% over a run at the default step.
+The backward Euler method also loses a little energy, about 0.03% over a run at the
+default step, again proportional to $dt$.
 
-!!! warning "Accuracy"
+The first-order convergence relies on a smooth track.  A jump in the curvature or
+its first two derivatives adds an error to the step where an axle crosses it, and
+that error depends on where the crossing falls within the step.  This makes the
+finish time a slightly jagged function of the car's design, and its gradients
+noisy.  [`SplineTrack`][pwdsim.track.SplineTrack] keeps the curvature and its first
+two derivatives continuous to avoid this (see [Track models](tracks.md)).
+
+!!! note "Accuracy"
     On the 42 ft BestTrack, the finish time at the default step is within about
-    0.5 ms of the converged value.  The large sensitivities, like those to the
-    position of the center of gravity and the front offset (about 15 ms/in), are
-    accurate to better than 1%.  Smaller sensitivities pick up the error at the
-    curvature jumps: the one to the rear wheel radius (about 3 ms/in) varies by
-    around 15% with the step size, and the one to the wheelbase (a few hundredths of
-    a ms/in) can be off by a factor of several.  Use a smaller `dt` when these
-    matter.
+    0.25 ms of the converged value.  Gradients of the finish time are stable to
+    about 1% for steps of 0.4 ms and below, including small sensitivities like the
+    one to the wheelbase (about 0.02 ms/in).  Coarser steps can't resolve the 1 in
+    easements on the track, and the gradients become noisy.
 
 pyzag solves blocks of time steps together (`block_size`, default 1000) to
 vectorize the calculation.

@@ -50,7 +50,7 @@ from pwdsim.units import DEGREE, FOOT, GRAM, INCH, OUNCE
 #
 # Treating the whole curve section as a circular arc gives a ramp angle of
 # $41/48$ rad, about 49 degrees.  Short easement curves join the arc to the
-# straight sections so that the curvature is continuous.
+# straight sections so that the curvature changes smoothly.
 
 # %%
 track = pwdsim.besttrack(42)

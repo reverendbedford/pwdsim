@@ -118,17 +118,27 @@ def simulate_besttrack(track, c, dt=1e-3, **kwargs):
 class TestBestTrack:
     def test_energy(self, track35):
         drifts = []
-        for dt in (1e-3, 2.5e-4):
+        for dt in (1e-3, 5e-4):
             energy = (
                 simulate_besttrack(track35, car(), dt=dt).energy()["total"].detach()
             )
             drifts.append(((energy[0] - energy[-1]) / energy[0]).item())
-        # Backward Euler loses a little energy.  Most of the error comes from the
-        # steps where the axles cross the ends of the easements, where the
-        # curvature derivative jumps, so the convergence is first order but not
-        # smooth in the step size.
-        assert 0 < drifts[1] < drifts[0] / 2
-        assert drifts[0] < 5e-3
+        # Backward Euler loses a little energy, converging at first order
+        assert 0 < drifts[1] < drifts[0] < 5e-3
+        assert drifts[0] / drifts[1] == pytest.approx(2.0, rel=0.05)
+
+    def test_gradients_converge(self, track35):
+        """Gradients don't depend on where the time steps fall along the track.
+
+        Jumps in the curvature or its first two derivatives would add errors that
+        depend on where the axles cross them within a time step, which shows up as
+        noise in the smaller gradients."""
+        grads = []
+        for dt in (4e-4, 2e-4):
+            c = car()
+            simulate_besttrack(track35, c, dt=dt).finish_time.backward()
+            grads.append(torch.cat([c.cg_.grad, c.wheelbase_.grad[None]]))
+        torch.testing.assert_close(grads[0], grads[1], rtol=0.05, atol=0)
 
     def test_finish_speed(self, track35):
         c = car()

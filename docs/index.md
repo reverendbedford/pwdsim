@@ -4,31 +4,85 @@ A pytorch/python Pinewood Derby simulator and optimizer.
 
 pwdsim simulates, visualizes, and optimizes pinewood derby cars:
 
-- **Simulation**: given the car and track, compute how long the car takes to reach the
-  finish line.
+- **Simulation**: race a car down a track, and compute its finish time, its speed,
+  and the forces on its wheels.
 - **Optimization**: automatic differentiation through the pytorch simulator gives
-  parameter sensitivities, and torch optimizers tune the car design within the
-  constraints of the race rules.
-- **Visualization**: plot performance studies and car geometries.
+  the sensitivity of the finish time to every car parameter, so torch optimizers
+  can tune the car design within the constraints of the race rules.
+- **Visualization**: plot the track, the car, and its run.
 
 !!! note "Status"
-    Early development.  The forward simulation works with gravity and the
-    translational kinetic energy of the car; friction, drag, and rotational inertia
-    are next.
+    Early development.  The forward simulation works, with gradients from the
+    adjoint method, for cars rolling under gravity without friction or drag.  The
+    rotational inertia of the wheels and body, aerodynamic drag, axle and rolling
+    friction, and optimization routines are next.
+
+## Quick start
+
+```python
+import pwdsim
+from pwdsim.plotting import plot_run
+from pwdsim.units import GRAM, INCH, OUNCE
+
+# A car built from the standard BSA kit, in customary units
+wheel_radius = 0.595 * INCH
+wheel_inertia = 0.58 * (2.6 * GRAM) * wheel_radius**2
+car = pwdsim.SimpleCar(
+    cg=(1.0 * INCH, 0.4 * INCH),
+    wheelbase=4.375 * INCH,
+    front_offset=6.125 * INCH,
+    mass=5 * OUNCE,
+    body_inertia=3.9e-4,
+    rear_wheel_inertia=wheel_inertia,
+    front_wheel_inertia=wheel_inertia,
+    rear_wheel_radius=wheel_radius,
+    front_wheel_radius=wheel_radius,
+    rear_axle_radius=0.0435 * INCH,
+    front_axle_radius=0.0435 * INCH,
+    rear_axle_friction=0.1,
+    front_axle_friction=0.1,
+    frontal_area=0.0014,
+    drag_coefficient=0.4,
+    rolling_friction=0.002,
+)
+
+# Race it down a 42 ft BestTrack
+sim = pwdsim.Simulation(pwdsim.besttrack(42), car)
+run = sim()
+print(f"Finish time: {run.finish_time.item():.4f} s")
+
+# Sensitivity of the finish time to the center of gravity, in ms per inch
+run.finish_time.backward()
+print(car.cg_.grad * INCH * 1000)
+
+plot_run(run, unit="ft")
+```
+
+The [forward model example](examples/forward_model.py) walks through a complete
+simulation: setting up the track and the car, racing it, computing sensitivities,
+and comparing a batch of designs.
 
 ## The model in brief
 
 The car is a 2D rigid body rolling along a track curve parameterized by arc length
-$s$. Its state is the rear wheel contact position $s$ and speed $\dot{s}$. The
-equation of motion comes from the Lagrangian
+$s$.  Its state is the location $s$ of the rear wheel contact and its rate
+$\dot{s}$.  The equation of motion comes from Lagrange's equations with a Rayleigh
+dissipation function $F$,
 
 $$
-\mathcal{L} = T_\mathrm{body} + T_\mathrm{wheels} - M g\, y_g(s),
+\frac{d}{dt} \frac{\partial T}{\partial \dot{q}_i}
+- \frac{\partial T}{\partial q_i}
++ \frac{\partial V}{\partial q_i}
++ \frac{\partial F}{\partial \dot{q}_i} = Q_i,
 $$
 
-where $T_\mathrm{body}$ includes the translation of the center of gravity and the
-pitching of the body, and $T_\mathrm{wheels}$ is the spin of the wheels. Axle friction,
-rolling friction, and aerodynamic drag enter as non-conservative generalized forces.
+assembled from modular physics terms that can be switched on and off.  So far these
+are the gravitational potential energy $V = M g\, y_g$ and the kinetic energy of the
+car moving with its center of gravity, $T = \tfrac{1}{2} M |\dot{\mathbf{x}}_g|^2$.
+The wheel spin, body pitch, drag, and friction terms will slot into the same
+framework.  The constraint forces $Q_i$ holding the axles on the track are the
+normal forces on the wheels, and the simulation warns if one goes negative: a wheel
+lifting off the track.
 
 The model is documented piece by piece:
 
@@ -39,12 +93,10 @@ The model is documented piece by piece:
 - [Forward simulation](simulation.md): how the equation of motion is assembled
   from modular physics terms and integrated in time, and the results of a run.
 
-## Getting started
+## Installation
+
+pwdsim requires Python 3.12 or later.
 
 ```bash
 uv pip install -e .
-```
-
-```python
-import pwdsim
 ```

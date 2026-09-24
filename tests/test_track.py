@@ -160,6 +160,82 @@ class TestSplineTrack:
         with pytest.raises(ValueError):
             SplineTrack(knots, angles, curvatures, s_start, s_finish)
 
+    def test_curvature_derivatives_at_knots(self):
+        knots = [0.0, 1.0, 2.0]
+        dkappa = [0.2, -0.3, 0.1]
+        track = SplineTrack(
+            knots,
+            [0.0, 0.1, 0.0],
+            [0.1, 0.0, -0.1],
+            0.1,
+            1.9,
+            curvature_derivatives=dkappa,
+        )
+        torch.testing.assert_close(
+            track.curvature_derivative(track.knots), torch.tensor(dkappa).double()
+        )
+        # The curvature derivative is continuous across the interior knot
+        eps = 1e-9
+        torch.testing.assert_close(
+            track.curvature_derivative(torch.tensor(1.0 - eps).double()),
+            track.curvature_derivative(torch.tensor(1.0 + eps).double()),
+            atol=1e-6,
+            rtol=0,
+        )
+
+    def test_reproduces_septic(self):
+        coefficients = [-0.4, 0.3, -0.2, 0.1, -0.05, 0.01, 0.004, -0.001]
+
+        def derivative(s, order):
+            """Derivative of the septic polynomial with the given coefficients."""
+            total = torch.zeros_like(s)
+            for k, c in enumerate(coefficients):
+                if k >= order:
+                    factor = math.prod(range(k - order + 1, k + 1))
+                    total = total + c * factor * s ** (k - order)
+            return total
+
+        knots = torch.tensor([0.0, 0.8, 2.0, 3.0], dtype=torch.float64)
+        track = SplineTrack(
+            knots,
+            derivative(knots, 0),
+            derivative(knots, 1),
+            0.0,
+            3.0,
+            curvature_derivatives=derivative(knots, 2),
+            curvature_second_derivatives=derivative(knots, 3),
+        )
+        s = torch.linspace(0, 3, 31, dtype=torch.float64)
+        torch.testing.assert_close(track.angle(s), derivative(s, 0))
+        torch.testing.assert_close(track.curvature(s), derivative(s, 1))
+        torch.testing.assert_close(track.curvature_derivative(s), derivative(s, 2))
+        torch.testing.assert_close(
+            track.curvature_second_derivative(s), derivative(s, 3)
+        )
+
+    def test_curvature_second_derivatives_continuous(self):
+        track = SplineTrack(
+            [0.0, 1.0, 2.0],
+            [0.0, 0.1, 0.0],
+            [0.1, 0.0, -0.1],
+            0.1,
+            1.9,
+            curvature_derivatives=[0.2, -0.3, 0.1],
+            curvature_second_derivatives=[0.0, 0.5, 0.0],
+        )
+        eps = 1e-9
+        s = torch.tensor([1.0 - eps, 1.0 + eps], dtype=torch.float64)
+        values = track.curvature_second_derivative(s)
+        torch.testing.assert_close(values[0], values[1], atol=1e-6, rtol=0)
+        assert values[0].item() == pytest.approx(0.5, abs=1e-6)
+
+    @pytest.mark.parametrize(
+        "keyword", ["curvature_derivatives", "curvature_second_derivatives"]
+    )
+    def test_invalid_curvature_derivatives(self, keyword):
+        with pytest.raises(ValueError, match="curvature"):
+            SplineTrack([0.0, 1.0], [0.0] * 2, [0.0] * 2, 0.0, 1.0, **{keyword: [0.0]})
+
 
 class TestInterpolate:
     @pytest.fixture
@@ -208,6 +284,22 @@ class TestInterpolate:
 
 
 class TestRampTrack:
+    def test_easement_is_smooth(self, ramp):
+        # The curvature follows a smooth step over each easement, with its first
+        # two derivatives continuous everywhere
+        s1, s2 = ramp.knots[1].item(), ramp.knots[2].item()
+        u = torch.linspace(0, 1, 11, dtype=torch.float64)
+        torch.testing.assert_close(
+            ramp.curvature(s1 + u * (s2 - s1)),
+            (6 * u**5 - 15 * u**4 + 10 * u**3) / 1.5,
+        )
+        eps = 1e-10
+        knots = ramp.knots[1:-1]
+        for f in (ramp.curvature_derivative, ramp.curvature_second_derivative):
+            torch.testing.assert_close(
+                f(knots - eps), f(knots + eps), atol=1e-3, rtol=0
+            )
+
     def test_curvature_profile(self, ramp):
         on_ramp = torch.tensor([0.5, 1.9], dtype=torch.float64)
         on_arc = torch.tensor([2.2, 2.5, 2.7], dtype=torch.float64)

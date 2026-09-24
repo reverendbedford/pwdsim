@@ -68,14 +68,45 @@ class Track(ABC):
         return self.position(s)[1]
 
 
-class SplineTrack(Track):
-    """Track whose angle $\\theta(s)$ is a piecewise cubic Hermite spline.
+def _hermite_basis(order: int) -> torch.Tensor:
+    """Hermite basis matching derivatives $0, \\dots$, `order` at both ends of the
+    unit interval.
 
-    The spline is defined by the angle and curvature at each knot, making $\\theta$
-    and $\\kappa$ continuous along the track.  Specifying the curvature directly
-    makes it easy to build exact straight sections ($\\kappa = 0$) and circular arcs
-    (constant $\\kappa$).  Use [`interpolate`][pwdsim.track.SplineTrack.interpolate]
-    to instead build a $C^2$ spline from the knot angles alone.
+    Returns a matrix whose rows are the powers $t^0, t^1, \\dots$ and whose columns
+    multiply the derivatives with respect to $t$ at $t = 0$, then at $t = 1$.
+    """
+    n = 2 * (order + 1)
+    powers = np.arange(n)
+    rows = []
+    for t in (0.0, 1.0):
+        for j in range(order + 1):
+            falling = np.array([np.prod(np.arange(k - j + 1, k + 1)) for k in powers])
+            with np.errstate(divide="ignore"):
+                monomial = np.where(powers >= j, t ** np.maximum(powers - j, 0), 0.0)
+            rows.append(falling * monomial)
+    return torch.as_tensor(np.linalg.inv(np.array(rows)), dtype=DTYPE)
+
+
+# Septic Hermite basis: matches the angle, curvature, and first two curvature
+# derivatives at both ends of a segment
+_HERMITE = _hermite_basis(3)
+
+
+class SplineTrack(Track):
+    """Track whose angle $\\theta(s)$ is a piecewise septic Hermite spline.
+
+    The spline is defined by the angle, the curvature, and the first two curvature
+    derivatives at each knot, making $\\theta$, $\\kappa$, $\\kappa'$, and
+    $\\kappa''$ continuous along the track.  This smoothness matters for the
+    simulation: a jump in $\\kappa'$ makes the car's acceleration jump, and a jump in
+    $\\kappa''$ makes its derivative jump, and either one adds errors to the time
+    integration that depend on exactly where the car is at each time step.
+
+    Specifying the curvature directly makes it easy to build exact straight sections
+    ($\\kappa = 0$) and circular arcs (constant $\\kappa$), with the curvature
+    derivatives left at zero.  Use
+    [`interpolate`][pwdsim.track.SplineTrack.interpolate] to instead build a smooth
+    spline from the knot angles alone.
 
     The position is integrated from the angle with Gauss-Legendre quadrature.
 
@@ -86,6 +117,10 @@ class SplineTrack(Track):
         curvatures: track curvature at each knot.
         s_start: location of the start pin.
         s_finish: location of the finish line.
+        curvature_derivatives: derivative of the curvature at each knot, zero by
+            default.
+        curvature_second_derivatives: second derivative of the curvature at each
+            knot, zero by default.
         n_quad: number of Gauss-Legendre points used per spline segment to
             integrate the position.
     """
@@ -97,11 +132,17 @@ class SplineTrack(Track):
         curvatures: ArrayLike,
         s_start: Scalar,
         s_finish: Scalar,
+        curvature_derivatives: ArrayLike | None = None,
+        curvature_second_derivatives: ArrayLike | None = None,
         n_quad: int = 16,
     ):
         self.knots = _as_tensor(knots)
         self.angles = _as_tensor(angles, self.knots.device)
         self.curvatures = _as_tensor(curvatures, self.knots.device)
+        self.curvature_derivatives = self._knot_values(curvature_derivatives)
+        self.curvature_second_derivatives = self._knot_values(
+            curvature_second_derivatives
+        )
 
         if self.knots.ndim != 1 or self.knots.shape[0] < 2:
             raise ValueError("Need a 1D array of at least two knots")
@@ -109,12 +150,17 @@ class SplineTrack(Track):
             raise ValueError("Need one angle per knot")
         if self.curvatures.shape != self.knots.shape:
             raise ValueError("Need one curvature per knot")
+        if self.curvature_derivatives.shape != self.knots.shape:
+            raise ValueError("Need one curvature derivative per knot")
+        if self.curvature_second_derivatives.shape != self.knots.shape:
+            raise ValueError("Need one curvature second derivative per knot")
         if self.knots[0] != 0:
             raise ValueError("The first knot must be at s = 0")
         if not torch.all(torch.diff(self.knots) > 0):
             raise ValueError("Knots must be strictly increasing")
 
         super().__init__(self.knots[-1], s_start, s_finish)
+        self._build_polynomials()
 
         xi, w = np.polynomial.legendre.leggauss(n_quad)
         self._quad_points = _as_tensor((xi + 1) / 2, self.knots.device)
@@ -137,10 +183,14 @@ class SplineTrack(Track):
         end_curvatures: tuple[Scalar, Scalar] = (0.0, 0.0),
         n_quad: int = 16,
     ) -> "SplineTrack":
-        """Build a $C^2$ cubic spline through the given knot angles.
+        """Build the $C^2$ cubic spline through the given knot angles.
 
         The knot curvatures are chosen so that $\\kappa'$ is also continuous, with
         the curvatures at the two ends of the track fixed (clamped end conditions).
+        The track takes the cubic's curvature derivatives at the knots.  The
+        cubic's second curvature derivative jumps at the knots, so the track uses
+        their average there, which makes it slightly smoother than the cubic.  It
+        reproduces a single cubic exactly.
 
         Args:
             knots: increasing arc length locations of the knots, starting at 0.
@@ -175,7 +225,29 @@ class SplineTrack(Track):
         rhs.append(_as_tensor(end_curvatures[1], knots.device))
         curvatures = torch.linalg.solve(A, torch.stack(rhs))
 
-        return cls(knots, angles, curvatures, s_start, s_finish, n_quad=n_quad)
+        # Second derivatives of the cubic at the knots, which are continuous: take
+        # them from the start of each segment, and the end of the last one
+        a0, a1 = angles[:-1], angles[1:]
+        m0, m1 = h * curvatures[:-1], h * curvatures[1:]
+        start = (-6 * a0 - 4 * m0 + 6 * a1 - 2 * m1) / h**2
+        end = (6 * a0 + 2 * m0 - 6 * a1 + 4 * m1) / h**2
+        curvature_derivatives = torch.cat([start, end[-1:]])
+        # Third derivatives are constant on each segment
+        third = (12 * a0 + 6 * m0 - 12 * a1 + 6 * m1) / h**3
+        curvature_second_derivatives = torch.cat(
+            [third[:1], (third[:-1] + third[1:]) / 2, third[-1:]]
+        )
+
+        return cls(
+            knots,
+            angles,
+            curvatures,
+            s_start,
+            s_finish,
+            curvature_derivatives=curvature_derivatives,
+            curvature_second_derivatives=curvature_second_derivatives,
+            n_quad=n_quad,
+        )
 
     def angle(self, s: float | torch.Tensor) -> torch.Tensor:
         s_clamped = self._clamp(s)
@@ -223,36 +295,44 @@ class SplineTrack(Track):
         t = (s - self.knots[i]) / (self.knots[i + 1] - self.knots[i])
         return i, t
 
+    def _knot_values(self, values):
+        if values is None:
+            return torch.zeros_like(self.knots)
+        return _as_tensor(values, self.knots.device)
+
+    def _build_polynomials(self):
+        """Polynomial coefficients of each segment in its local coordinate
+        $t \\in [0, 1]$, for the angle and its first three derivatives with respect
+        to $s$."""
+        h = torch.diff(self.knots)[:, None]
+        # Derivatives with respect to the local coordinate t at each knot
+        derivatives = torch.stack(
+            [
+                self.angles,
+                self.curvatures,
+                self.curvature_derivatives,
+                self.curvature_second_derivatives,
+            ],
+            dim=-1,
+        )
+        scale = h ** torch.arange(4, dtype=DTYPE, device=h.device)
+        data = torch.cat([derivatives[:-1] * scale, derivatives[1:] * scale], dim=-1)
+        coefficients = data @ _HERMITE.to(data.device).T
+        self._polynomials = [coefficients]
+        for _ in range(3):
+            powers = torch.arange(1, coefficients.shape[-1], dtype=DTYPE)
+            coefficients = coefficients[:, 1:] * powers / h
+            self._polynomials.append(coefficients)
+
     def _hermite(self, i, t, derivative=0):
         """Evaluate the angle spline, or its derivatives with respect to $s$."""
-        h = self.knots[i + 1] - self.knots[i]
-        a0, a1 = self.angles[i], self.angles[i + 1]
-        m0, m1 = h * self.curvatures[i], h * self.curvatures[i + 1]
-        t2 = t * t
-        if derivative == 0:
-            return (
-                (2 * t2 * t - 3 * t2 + 1) * a0
-                + (t2 * t - 2 * t2 + t) * m0
-                + (-2 * t2 * t + 3 * t2) * a1
-                + (t2 * t - t2) * m1
-            )
-        if derivative == 1:
-            return (
-                (6 * t2 - 6 * t) * a0
-                + (3 * t2 - 4 * t + 1) * m0
-                + (-6 * t2 + 6 * t) * a1
-                + (3 * t2 - 2 * t) * m1
-            ) / h
-        if derivative == 2:
-            return (
-                (12 * t - 6) * a0
-                + (6 * t - 4) * m0
-                + (-12 * t + 6) * a1
-                + (6 * t - 2) * m1
-            ) / h**2
-        if derivative == 3:
-            return (12 * a0 + 6 * m0 - 12 * a1 + 6 * m1) / h**3
-        raise ValueError(f"Unsupported derivative order {derivative}")
+        if derivative not in range(len(self._polynomials)):
+            raise ValueError(f"Unsupported derivative order {derivative}")
+        coefficients = self._polynomials[derivative][i]
+        value = coefficients[..., -1]
+        for k in range(coefficients.shape[-1] - 2, -1, -1):
+            value = value * t + coefficients[..., k]
+        return value
 
     def _integrate(self, i, t):
         """Integrate $(\\cos\\theta, \\sin\\theta)$ from the start of segment `i` to
@@ -277,9 +357,9 @@ def ramp_track(
     """Build the classic derby track: a straight ramp, a curve, and a flat run.
 
     The curve is a circular arc joined to the straight sections by short easement
-    curves, over which the curvature ramps linearly between zero and $1/R$.  The
-    easements keep the curvature continuous, as required by
-    [`SplineTrack`][pwdsim.track.SplineTrack].
+    curves.  Over each easement the curvature ramps smoothly between zero and $1/R$,
+    following the quintic $6u^5 - 15u^4 + 10u^3$ of the fraction $u$ of the way
+    along it, so that the curvature and its first two derivatives are continuous.
 
     Args:
         length: total track length.

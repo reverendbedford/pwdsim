@@ -20,6 +20,7 @@ Every track provides these functions of $s$:
 | Angle from the horizontal | $\theta(s)$ | [`angle`][pwdsim.track.Track.angle] |
 | Curvature | $\kappa(s) = \theta'(s)$ | [`curvature`][pwdsim.track.Track.curvature] |
 | Curvature derivative | $\kappa'(s)$ | [`curvature_derivative`][pwdsim.track.Track.curvature_derivative] |
+| Curvature second derivative | $\kappa''(s)$ | [`curvature_second_derivative`][pwdsim.track.Track.curvature_second_derivative] |
 | Position | $(x(s), y(s))$ | [`position`][pwdsim.track.Track.position] |
 | Height | $y(s)$ | [`height`][pwdsim.track.Track.height] |
 
@@ -58,26 +59,39 @@ axle location when the rear wheels are near an end.
 ## Spline tracks
 
 [`SplineTrack`][pwdsim.track.SplineTrack] describes the angle $\theta(s)$ as a
-piecewise cubic polynomial.  The track is divided into segments at a set of knots
-$0 = s_0 < s_1 < \dots < s_n = L$, and you give both the angle $\theta_i$ and the
-curvature $\kappa_i$ at each knot.  On the segment $[s_i, s_{i+1}]$, with
-$h_i = s_{i+1} - s_i$ and local coordinate $t = (s - s_i)/h_i$, the angle is the cubic
-Hermite polynomial
+piecewise polynomial.  The track is divided into segments at a set of knots
+$0 = s_0 < s_1 < \dots < s_n = L$.  At each knot you give the angle $\theta_i$ and the
+curvature $\kappa_i$, and optionally the first two derivatives of the curvature,
+$\kappa'_i$ and $\kappa''_i$ (zero by default).  On each segment the angle is the
+unique degree 7 (septic) polynomial matching those four values at both ends: a
+Hermite spline.  With $h_i = s_{i+1} - s_i$ and the local coordinate
+$t = (s - s_i)/h_i \in [0, 1]$,
 
 $$
-\theta(s) = H_{00}(t)\,\theta_i + H_{10}(t)\,h_i \kappa_i
-          + H_{01}(t)\,\theta_{i+1} + H_{11}(t)\,h_i \kappa_{i+1},
+\theta(s) = \sum_{j=0}^{3} \left[
+H_{0j}(t)\, h_i^j\, \theta^{(j)}_i + H_{1j}(t)\, h_i^j\, \theta^{(j)}_{i+1}
+\right],
 $$
 
-with the standard Hermite basis functions
+where $\theta^{(j)}$ is the $j$th derivative of the angle ($\theta$, $\kappa$,
+$\kappa'$, $\kappa''$), and the basis polynomials $H_{0j}$ and $H_{1j}$ have
+$j$th derivative 1 at $t = 0$ and $t = 1$ respectively, with all their other
+derivatives up to the third zero at both ends.
 
-$$
-H_{00} = 2t^3 - 3t^2 + 1, \quad H_{10} = t^3 - 2t^2 + t, \quad
-H_{01} = -2t^3 + 3t^2, \quad H_{11} = t^3 - t^2.
-$$
+The angle, the curvature, and the first two curvature derivatives are all
+continuous along the track.
 
-The angle and curvature are both continuous along the track.  The curvature
-derivative $\kappa'$ may jump at the knots.
+### Why so smooth?
+
+The car's acceleration depends on the curvature and its derivative, and the Jacobian
+the time integrator needs depends on $\kappa''$ too (see
+[Forward simulation](simulation.md)).  A jump in any of them adds an error to the
+time step where an axle crosses it.  That error depends on exactly where the
+crossing falls within the step, which in turn depends on the car's design.  So the
+finish time picks up a small sawtooth as a function of the design, and its gradients
+pick up much larger noise.  With a cubic spline, which lets $\kappa'$ jump, the
+gradients of the smaller sensitivities could be off by a factor of several.  With
+the septic spline they converge smoothly.
 
 ### Why specify the curvature?
 
@@ -85,15 +99,16 @@ Real tracks are built from straight sections and curves.  Specifying the curvatu
 each knot represents those pieces exactly:
 
 - a **straight** section has the same angle at both ends and zero curvature, so the
-  cubic reduces to a constant;
+  polynomial reduces to a constant;
 - a **circular arc** of radius $R$ has curvature $1/R$ at both ends and an angle
-  change of $h_i / R$, so the cubic reduces to a straight line in $\theta$;
-- an **easement**, where the curvature changes linearly from one value to another,
-  is also reproduced exactly, since the angle is then quadratic.
+  change of $h_i / R$, so the polynomial reduces to a straight line in $\theta$;
+- an **easement**, where the curvature changes smoothly from one value to another,
+  is reproduced exactly as long as the curvature follows a polynomial of degree 6
+  or less.
 
 A standard interpolating spline, which only uses the knot angles, can't do this.  It
-also forces $\kappa'$ to be continuous, which makes it overshoot and wiggle next to
-the straight sections.
+also forces derivatives of the curvature to be continuous, which makes it overshoot
+and wiggle next to the straight sections.
 
 ### Interpolating splines
 
@@ -101,12 +116,14 @@ When you only have angles, for example angles measured along an existing track,
 [`SplineTrack.interpolate`][pwdsim.track.SplineTrack.interpolate] builds the classic
 $C^2$ cubic spline.  It solves for the knot curvatures that make $\kappa'$
 continuous at every interior knot, with the curvatures at the two ends of the track
-fixed (zero by default).
+fixed (zero by default).  The track then uses the cubic's curvature derivatives at
+the knots.  A cubic spline's $\kappa''$ jumps at the knots, so the track takes the
+average there, which makes it follow the cubic closely while staying smooth.
 
 ### Computing the position
 
 There is no closed form for the integrals of $\cos\theta$ and $\sin\theta$ when
-$\theta$ is a cubic, so the position is integrated numerically.  Gauss-Legendre
+$\theta$ is a polynomial, so the position is integrated numerically.  Gauss-Legendre
 quadrature is applied within each segment: 16 points per segment by default, which
 is accurate to around $10^{-9}$ m for typical tracks.  The positions at the knots are
 computed once, when the track is created.  Evaluating the position at any $s$ then
@@ -126,11 +143,18 @@ finish locations.
 
 The transition is a circular arc of radius $R$ that turns the track from the ramp
 angle to horizontal.  Joining an arc directly to a straight section would make the
-curvature jump from $0$ to $1/R$, and the curvature of a `SplineTrack` must be
-continuous.  So short **easements** (1 inch long by default) join the arc to the
-straights, and the curvature ramps linearly over each one.  Railway transition curves
-use the same idea.  Physically, an easement means the load on the car's wheels builds
-up over a short distance instead of jumping instantly.
+curvature jump from $0$ to $1/R$, but a `SplineTrack` keeps the curvature and its
+first two derivatives continuous.  So short **easements** (1 inch long by default)
+join the arc to the straights.  Over each one the curvature follows the smooth step
+
+$$
+\kappa = \frac{1}{R}\left(10u^3 - 15u^4 + 6u^5\right),
+$$
+
+where $u$ runs from 0 to 1 along the easement, so that $\kappa'$ and $\kappa''$ are
+zero at both ends.  Railway transition curves use the same idea.  Physically, an
+easement means the load on the car's wheels builds up over a short distance instead
+of jumping instantly.
 
 ### BestTrack
 
