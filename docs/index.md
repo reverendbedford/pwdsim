@@ -32,6 +32,8 @@ The model is documented piece by piece:
 
 - [Track models](tracks.md): how pwdsim describes track geometry, and the standard
   tracks it includes.
+- [Cars](cars.md): the essential properties that describe a car, and the car
+  classes that provide them.
 
 ## Getting started
 

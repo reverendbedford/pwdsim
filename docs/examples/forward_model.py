@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 
 import pwdsim
 from pwdsim.plotting import plot_track
-from pwdsim.units import DEGREE, FOOT, INCH
+from pwdsim.units import DEGREE, FOOT, GRAM, INCH, OUNCE
 
 # %% [markdown]
 # ## The track
@@ -85,3 +85,63 @@ ax_profile.set_xlim((x_curve[0] - margin) / INCH, (x_curve[1] + margin) / INCH)
 ax_profile.set_ylim((y_curve[1] - margin) / INCH, (y_curve[0] + margin) / INCH)
 ax_angle.set_xlim((s_curve[0] - margin) / INCH, (s_curve[1] + margin) / INCH)
 plt.show()
+
+# %% [markdown]
+# ## The car
+#
+# The simulator needs a handful of essential car properties: the mass and its
+# distribution, the axle and wheel geometry, and the friction and drag coefficients.
+# `SimpleCar` takes these values directly and stores each one as a trainable torch
+# parameter.  The *Cars* page of the docs describes the car model in detail.
+#
+# The values below describe a legal, reasonably well-built car made from the
+# standard BSA kit.  They are estimates, mostly from the
+# [Wikibooks derby physics page](https://en.wikibooks.org/wiki/How_To_Build_a_Pinewood_Derby_Car/Physics):
+#
+# - **Geometry:** the kit's axle slots are about $4\tfrac{3}{8}$ in apart, with
+#   the rear slot about $\tfrac{7}{8}$ in from the back of the 7 in block.
+# - **Mass:** the 5 oz limit, with the center of gravity 1 in ahead of the rear
+#   axle, a common target for fast cars.  The body's pitching inertia is estimated
+#   as a uniform 7 in by 1.25 in block, $I_b \approx M (l^2 + h^2) / 12$.
+# - **Wheels:** 95.0 mm around, so a radius of 0.595 in, weighing 2.6 g each with
+#   $I \approx 0.58\, m r^2$.  The axles are 0.087 in in diameter.
+# - **Friction and drag:** a lubricated axle friction coefficient of 0.1, a rolling
+#   resistance coefficient of 0.002, a drag coefficient of 0.4, and the
+#   $0.0014\ \mathrm{m}^2$ frontal area of an uncut block.
+
+# %%
+mass = 5 * OUNCE
+wheel_radius = 0.595 * INCH
+wheel_inertia = 0.58 * (2.6 * GRAM) * wheel_radius**2
+body_inertia = mass * ((7 * INCH) ** 2 + (1.25 * INCH) ** 2) / 12
+
+car = pwdsim.SimpleCar(
+    cg=(1.0 * INCH, 0.4 * INCH),
+    wheelbase=4.375 * INCH,
+    front_offset=(7 - 0.875) * INCH,
+    mass=mass,
+    body_inertia=body_inertia,
+    rear_wheel_inertia=wheel_inertia,
+    front_wheel_inertia=wheel_inertia,
+    rear_wheel_radius=wheel_radius,
+    front_wheel_radius=wheel_radius,
+    rear_axle_radius=0.087 / 2 * INCH,
+    front_axle_radius=0.087 / 2 * INCH,
+    rear_axle_friction=0.1,
+    front_axle_friction=0.1,
+    frontal_area=0.0014,
+    drag_coefficient=0.4,
+    rolling_friction=0.002,
+)
+
+for name, value in car.summary().items():
+    values = value if isinstance(value, list) else [value]
+    print(f"{name:20s}", *(f"{v:.4g}" for v in values))
+
+# %% [markdown]
+# All values are in SI units.  Every property except the wheel counts is a
+# trainable parameter, ready for a torch optimizer:
+
+# %%
+for name, parameter in car.named_parameters():
+    print(f"{name:21s} requires_grad={parameter.requires_grad}")

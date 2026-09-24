@@ -11,20 +11,12 @@ geometry calculations near the ends of the track stay well defined.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
 
 import numpy as np
 import torch
 
+from pwdsim.types import DTYPE, ArrayLike, Scalar
 from pwdsim.units import INCH
-
-DTYPE = torch.float64
-
-Scalar = float | torch.Tensor
-"""A scalar value, as a python float or 0-d tensor."""
-
-ArrayLike = Sequence[float] | np.ndarray | torch.Tensor
-"""A 1D array of values."""
 
 
 def _as_tensor(value, device=None) -> torch.Tensor:
@@ -348,4 +340,4 @@ def besttrack(length_ft: int = 42) -> SplineTrack:
     )
 
 
-__all__ = ["ArrayLike", "Scalar", "SplineTrack", "Track", "besttrack", "ramp_track"]
+__all__ = ["SplineTrack", "Track", "besttrack", "ramp_track"]

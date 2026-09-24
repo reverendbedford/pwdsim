@@ -11,6 +11,7 @@ theme:
 nav:
   - Home: index.md
   - Track models: tracks.md
+  - Cars: cars.md
   - Examples:
       - Forward model: examples/forward_model.py
   - API reference: api.md
