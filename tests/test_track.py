@@ -87,14 +87,16 @@ class TestSplineTrack:
         x, y = curvy_track.position(s)
         theta = curvy_track.angle(s)
         kappa = curvy_track.curvature(s)
-        dx, dy, dtheta, dkappa = (
+        dkappa = curvy_track.curvature_derivative(s)
+        dx, dy, dtheta, d_kappa, d_dkappa = (
             torch.autograd.grad(v.sum(), s, retain_graph=True)[0]
-            for v in (x, y, theta, kappa)
+            for v in (x, y, theta, kappa, dkappa)
         )
         torch.testing.assert_close(dx, torch.cos(theta))
         torch.testing.assert_close(dy, torch.sin(theta))
         torch.testing.assert_close(dtheta, kappa)
-        torch.testing.assert_close(dkappa, curvy_track.curvature_derivative(s))
+        torch.testing.assert_close(d_kappa, dkappa)
+        torch.testing.assert_close(d_dkappa, curvy_track.curvature_second_derivative(s))
 
     def test_continuity_at_knots(self, curvy_track):
         eps = 1e-9
@@ -123,6 +125,9 @@ class TestSplineTrack:
             )
             torch.testing.assert_close(
                 curvy_track.curvature_derivative(s), torch.zeros(2).double()
+            )
+            torch.testing.assert_close(
+                curvy_track.curvature_second_derivative(s), torch.zeros(2).double()
             )
 
     def test_batched_input(self, curvy_track):

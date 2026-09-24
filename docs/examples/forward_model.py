@@ -19,10 +19,13 @@
 # track is implemented.
 
 # %%
+import warnings
+
 import matplotlib.pyplot as plt
+import torch
 
 import pwdsim
-from pwdsim.plotting import plot_track
+from pwdsim.plotting import plot_car, plot_run, plot_track
 from pwdsim.units import DEGREE, FOOT, GRAM, INCH, OUNCE
 
 # %% [markdown]
@@ -115,7 +118,7 @@ wheel_radius = 0.595 * INCH
 wheel_inertia = 0.58 * (2.6 * GRAM) * wheel_radius**2
 body_inertia = mass * ((7 * INCH) ** 2 + (1.25 * INCH) ** 2) / 12
 
-car = pwdsim.SimpleCar(
+car_args = dict(
     cg=(1.0 * INCH, 0.4 * INCH),
     wheelbase=4.375 * INCH,
     front_offset=(7 - 0.875) * INCH,
@@ -133,6 +136,7 @@ car = pwdsim.SimpleCar(
     drag_coefficient=0.4,
     rolling_friction=0.002,
 )
+car = pwdsim.SimpleCar(**car_args)
 
 for name, value in car.summary().items():
     values = value if isinstance(value, list) else [value]
@@ -145,3 +149,108 @@ for name, value in car.summary().items():
 # %%
 for name, parameter in car.named_parameters():
     print(f"{name:21s} requires_grad={parameter.requires_grad}")
+
+# %% [markdown]
+# ## Simulating a run
+#
+# A `Simulation` puts the car on the track, with the front of the car against the
+# start pin, and integrates its equation of motion in time.  The equation of motion
+# is assembled from modular physics terms.  So far there are only two, so this car
+# rolls without friction or drag, and its wheels have no inertia:
+#
+# - `gravity`: the potential energy of the car, $M g\, y_g$;
+# - `translation`: the kinetic energy of the car moving with its center of gravity,
+#   $\tfrac{1}{2} M |\dot{\mathbf{x}}_g|^2$.
+#
+# The simulation uses backward Euler time steps of 0.1 ms, accurate to a fraction of
+# a millisecond in the finish time.
+
+# %%
+sim = pwdsim.Simulation(track, car)
+print("Physics terms:", list(sim.physics))
+
+run = sim()
+print(f"Finish time:  {run.finish_time.item():.4f} s")
+print(f"Finish speed: {run.finish_speed.item():.3f} m/s")
+print(f"Max speed:    {run.max_speed.item():.3f} m/s")
+print(f"Min normal forces (rear, front): {run.min_normal_force.detach().numpy()} N")
+
+# %% [markdown]
+# The car speeds up down the ramp and through the curve, then coasts at constant
+# speed along the flat, frictionless run.  The normal forces jump up in the curve,
+# where the track has to turn the car's momentum upwards.  If either normal force
+# went negative, the simulation would warn that a wheel lifted off the track.
+
+# %%
+fig = plot_run(run, unit="ft")
+plt.show()
+
+# %% [markdown]
+# Here's the car at true scale as it goes through the curve.  The car pitches up
+# as it follows the track, and the wheels ride one radius off the track surface.
+
+# %%
+fig = plot_car(sim, torch.tensor([75, 90, 105, 120, 135]) * INCH)
+plt.show()
+
+# %% [markdown]
+# ## Sensitivities
+#
+# The finish time is differentiable with respect to every car parameter.  The
+# adjoint method provides the gradients at about the cost of one more simulation.
+# For example, this is how much time moving the center of gravity 1 in forward or up
+# costs:
+
+# %%
+run.finish_time.backward()
+dt_dcg = car.cg_.grad * INCH * 1000
+print(f"Moving the CG forward 1 in: {dt_dcg[0].item():+.1f} ms")
+print(f"Moving the CG up 1 in:      {dt_dcg[1].item():+.1f} ms")
+print(f"Mass:                       {car.mass_.grad.item():+.1e} s/kg")
+
+# %% [markdown]
+# With these physics terms the mass doesn't matter at all, since every force is
+# proportional to it.  What matters is how far the center of gravity drops between
+# the start and the flat run.  Moving the center of gravity back raises it on the
+# ramp, where the car is tilted, but not on the flat, so it drops further and the
+# car is faster.  Raising the center of gravity does the opposite: on the ramp a
+# point 1 in above the axles is only $\cos 49^\circ \approx 0.66$ in higher,
+# while on the flat it is the full inch higher, so the drop gets smaller.
+
+# %% [markdown]
+# ## Comparing designs
+#
+# Car properties can have a batch dimension to simulate several designs in one
+# run.  Here we sweep the center of gravity from 1/4 in to 2 in ahead of the rear
+# axle.
+
+# %%
+cg_along = torch.linspace(0.25, 2.0, 8) * INCH
+cg_sweep = torch.stack([cg_along, torch.full_like(cg_along, 0.4 * INCH)], dim=-1)
+cars = pwdsim.SimpleCar(**(car_args | {"cg": cg_sweep}))
+
+with torch.no_grad():
+    sweep = pwdsim.Simulation(track, cars)()
+
+fig, ax = plt.subplots(figsize=(8, 4), constrained_layout=True)
+ax.plot(cg_along / INCH, sweep.finish_time.detach() * 1000, "o-")
+ax.set_xlabel("center of gravity ahead of the rear axle (in)")
+ax.set_ylabel("finish time (ms)")
+plt.show()
+
+# %% [markdown]
+# Moving the center of gravity back keeps paying off, but it can't go all the way
+# back.  With the center of gravity directly over the rear axle, the front wheels
+# carry almost no load.  Then, as the car comes out of the curve and stops pitching
+# up, the front normal force goes negative: the front wheels would lift off the
+# track.  The simulation warns about this, and reports the minimum normal forces so
+# an optimizer can avoid these designs.
+
+# %%
+over_axle = pwdsim.SimpleCar(**(car_args | {"cg": (0.0, 0.4 * INCH)}))
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("always")
+    lifted = pwdsim.Simulation(track, over_axle)()
+for warning in caught:
+    print(f"{warning.category.__name__}: {warning.message}")
+print(f"Min normal forces (rear, front): {lifted.min_normal_force.detach().numpy()} N")

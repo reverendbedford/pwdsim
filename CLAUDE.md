@@ -79,7 +79,11 @@ The non-conservative contributions enter as generalized forces:
 2. Drag, $\tfrac{1}{2} \rho C_d A \dot{s}^2$.
 3. Rolling friction, $c_r N$.
 
-Axle and rolling friction depend on the normal forces at the rear and front axles, $N_r$ and $N_f$.  These are constraint forces that the single-coordinate Lagrangian does not provide directly, so we compute them from a Newton-Euler balance on the car body.  They depend on the centripetal loading through curved sections ($\propto \dot{s}^2 \kappa$) and on $\ddot{s}$ itself, making the equation of motion implicit (but linear) in $\ddot{s}$.
+Axle and rolling friction depend on the normal forces at the rear and front axles, $N_r$ and $N_f$.  These are constraint forces, which we get as Lagrange multipliers: the generalized coordinates are $q = (s, h_r, h_f)$, where $h_r$ and $h_f$ lift each axle off the track along the track normal and are always held at zero.  The Euler-Lagrange equations along the lifts give the normal forces, automatically consistent with whichever physics terms are enabled.  They depend on the centripetal loading through curved sections ($\propto \dot{s}^2 \kappa$) and on $\ddot{s}$ itself, so once friction depends on them the equation of motion becomes a small linear system for $(\ddot{s}, N_r, N_f)$.
+
+The physics is modular (`src/pwdsim/physics.py`).  Terms are kinetic (`KineticTerm`), potential (`PotentialTerm`), or dissipative (`DissipativeTerm`, Rayleigh dissipation functions), can be enabled and disabled by name, and supply **analytic** derivatives with respect to $s$ and the lifts (every derivative is checked against finite differences in the tests).  Kinetic energies are sums of squared *rates* $\rho = J(q) \cdot \dot{q}$ (CG velocity, pitch rate, wheel spin), so a kinetic term only supplies $J_s$, its first two $s$-derivatives, and the lift components.  The car geometry and its derivatives (including the implicit front contact solve) live in `src/pwdsim/kinematics.py`.
+
+Time integration uses pyzag (backward Euler by default, $dt = 0.1$ ms) with the adjoint method for gradients.  Car properties may carry a leading batch dimension to simulate several designs at once.
 
 ### Validity checks
 

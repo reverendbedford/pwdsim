@@ -55,6 +55,11 @@ class Track(ABC):
         """Derivative of the curvature with respect to arc length, $\\kappa'(s)$."""
 
     @abstractmethod
+    def curvature_second_derivative(self, s: float | torch.Tensor) -> torch.Tensor:
+        """Second derivative of the curvature with respect to arc length,
+        $\\kappa''(s)$."""
+
+    @abstractmethod
     def position(self, s: float | torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Position $(x(s), y(s))$ of the track."""
 
@@ -186,6 +191,11 @@ class SplineTrack(Track):
         value = self._hermite(*self._locate(s_clamped), derivative=2)
         return torch.where(self._on_track(s), value, 0.0)
 
+    def curvature_second_derivative(self, s: float | torch.Tensor) -> torch.Tensor:
+        s_clamped = self._clamp(s)
+        value = self._hermite(*self._locate(s_clamped), derivative=3)
+        return torch.where(self._on_track(s), value, 0.0)
+
     def position(self, s: float | torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         s = _as_tensor(s, self.knots.device)
         s_clamped = self._clamp(s)
@@ -240,6 +250,8 @@ class SplineTrack(Track):
                 + (-12 * t + 6) * a1
                 + (6 * t - 2) * m1
             ) / h**2
+        if derivative == 3:
+            return (12 * a0 + 6 * m0 - 12 * a1 + 6 * m1) / h**3
         raise ValueError(f"Unsupported derivative order {derivative}")
 
     def _integrate(self, i, t):

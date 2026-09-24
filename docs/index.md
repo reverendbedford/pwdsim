@@ -12,7 +12,9 @@ pwdsim simulates, visualizes, and optimizes pinewood derby cars:
 - **Visualization**: plot performance studies and car geometries.
 
 !!! note "Status"
-    Early development. The simulator is not yet implemented.
+    Early development.  The forward simulation works with gravity and the
+    translational kinetic energy of the car; friction, drag, and rotational inertia
+    are next.
 
 ## The model in brief
 
@@ -34,6 +36,8 @@ The model is documented piece by piece:
   tracks it includes.
 - [Cars](cars.md): the essential properties that describe a car, and the car
   classes that provide them.
+- [Forward simulation](simulation.md): how the equation of motion is assembled
+  from modular physics terms and integrated in time, and the results of a run.
 
 ## Getting started
 

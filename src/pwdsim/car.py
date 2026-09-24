@@ -24,7 +24,9 @@ class Car(nn.Module, ABC):
     """Base class for cars.
 
     Subclasses implement each of the abstract properties, returning a float64
-    tensor, except for the wheel counts, which are integers.  Because a car is a
+    tensor, except for the wheel counts, which are integers.  The tensors may have
+    leading batch dimensions to describe several car designs at once; see
+    [`batch_shape`][pwdsim.car.Car.batch_shape].  Because a car is a
     `torch.nn.Module`, its trainable parameters are available
     through `car.parameters()` for optimization.
     """
@@ -180,22 +182,41 @@ class Car(nn.Module, ABC):
             "rolling_friction",
         )
         for name in positive:
-            if not getattr(self, name) > 0:
+            if not torch.all(getattr(self, name) > 0):
                 raise ValueError(f"{name} must be positive")
         for name in nonnegative:
-            if not getattr(self, name) >= 0:
+            if not torch.all(getattr(self, name) >= 0):
                 raise ValueError(f"{name} must be nonnegative")
         for name in ("n_rear_wheels", "n_front_wheels"):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be at least 1")
-        if self.cg.shape != (2,):
+        if self.cg.ndim < 1 or self.cg.shape[-1] != 2:
             raise ValueError("cg must be a vector with two components")
-        if not self.front_offset >= self.wheelbase:
+        try:
+            _ = self.batch_shape
+        except RuntimeError as error:
+            raise ValueError("Batch shapes of the car properties differ") from error
+        if not torch.all(self.front_offset >= self.wheelbase):
             raise ValueError("The front of the car must be ahead of the front axle")
-        if not self.rear_axle_radius < self.rear_wheel_radius:
+        if not torch.all(self.rear_axle_radius < self.rear_wheel_radius):
             raise ValueError("The rear axle must be smaller than the rear wheels")
-        if not self.front_axle_radius < self.front_wheel_radius:
+        if not torch.all(self.front_axle_radius < self.front_wheel_radius):
             raise ValueError("The front axle must be smaller than the front wheels")
+
+    @property
+    def batch_shape(self) -> torch.Size:
+        """Batch shape of the car, broadcast from the shapes of its properties.
+
+        Every property may have leading batch dimensions, to describe several car
+        designs at once, as long as the shapes broadcast.  The `cg` has an extra
+        trailing dimension of size 2.  A single car has batch shape `()`.
+        """
+        shapes = [
+            getattr(self, name).shape
+            for name in self.PROPERTIES
+            if name not in ("cg", "n_rear_wheels", "n_front_wheels")
+        ]
+        return torch.broadcast_shapes(self.cg.shape[:-1], *shapes)
 
 
 def _parameter(value) -> nn.Parameter:
@@ -219,6 +240,10 @@ class SimpleCar(Car):
 
     All arguments are in SI units: multiply by the constants in
     [`pwdsim.units`][pwdsim.units] to give them in customary units.
+
+    To describe a batch of car designs, give any of the arguments a leading batch
+    dimension, e.g. `mass=torch.tensor([4.0, 5.0]) * OUNCE` or a `cg` with shape
+    `(nbatch, 2)`.  Arguments without the batch dimension are shared by every car.
 
     Args:
         cg: center of gravity relative to the rear axle in the body frame,

@@ -8,6 +8,18 @@
 
 ::: pwdsim.car
 
+## Kinematics
+
+::: pwdsim.kinematics
+
+## Physics
+
+::: pwdsim.physics
+
+## Simulation
+
+::: pwdsim.simulation
+
 ## Plotting
 
 ::: pwdsim.plotting

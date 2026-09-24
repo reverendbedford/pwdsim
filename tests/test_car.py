@@ -125,6 +125,33 @@ def test_state_dict_round_trip(car):
     torch.testing.assert_close(other.mass, car.mass)
 
 
+def test_single_car_batch_shape(car):
+    assert car.batch_shape == ()
+
+
+def test_batched_car():
+    cg = torch.tensor([[1.0, 0.4], [0.5, 0.4], [1.5, 0.3]]) * INCH
+    car = SimpleCar(**car_args(cg=cg, mass=torch.tensor([4.0, 5.0, 5.0]) * OUNCE))
+    assert car.batch_shape == (3,)
+    assert car.cg.shape == (3, 2)
+    assert car.summary()["mass"] == pytest.approx([4 * OUNCE, 5 * OUNCE, 5 * OUNCE])
+
+
+def test_batched_invalid_member():
+    with pytest.raises(ValueError, match="mass"):
+        SimpleCar(**car_args(mass=torch.tensor([5.0, -1.0]) * OUNCE))
+
+
+def test_mismatched_batch_shapes():
+    with pytest.raises(ValueError, match="Batch shapes"):
+        SimpleCar(
+            **car_args(
+                mass=torch.tensor([4.0, 5.0]) * OUNCE,
+                wheelbase=torch.tensor([4.0, 4.3, 4.4]) * INCH,
+            )
+        )
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
