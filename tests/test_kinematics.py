@@ -114,6 +114,39 @@ def test_lift_derivatives(setup, lift):
         )
 
 
+@pytest.mark.parametrize("lift", ["dhr", "dhf"])
+def test_mixed_derivatives(setup, lift):
+    _, kinematics, s = setup
+    h = 1e-5
+    with torch.no_grad():
+        center = quantities(kinematics.evaluate(s))
+        plus = quantities(kinematics.evaluate(s + h))
+        minus = quantities(kinematics.evaluate(s - h))
+    for name, q in center.items():
+        fd = (getattr(plus[name], lift) - getattr(minus[name], lift)) / (2 * h)
+        torch.testing.assert_close(
+            getattr(q, f"{lift}_ds"), fd, rtol=1e-5, atol=1e-5, msg=f"{name}.{lift}_ds"
+        )
+
+
+def test_track_points(setup):
+    track, kinematics, s = setup
+    with torch.no_grad():
+        config = kinematics.evaluate(s)
+    for point, contact in (
+        (config.rear_track, s),
+        (config.front_track, config.front_contact.value),
+    ):
+        torch.testing.assert_close(point.angle, track.angle(contact))
+        torch.testing.assert_close(point.curvature, track.curvature(contact))
+        torch.testing.assert_close(
+            point.dcurvature, track.curvature_derivative(contact)
+        )
+        torch.testing.assert_close(
+            point.ddcurvature, track.curvature_second_derivative(contact)
+        )
+
+
 def test_constraints(setup):
     track, kinematics, s = setup
     car = kinematics.car
@@ -212,7 +245,7 @@ def test_batched_car():
         for i in range(2):
             single = CarKinematics(track, make_car(cg=cg[i], wheelbase=wheelbase[i]))
             expected = single.evaluate(s[:, i])
-            for field in FIELDS + ("dhr", "dhf"):
+            for field in FIELDS + ("dhr", "dhf", "dhr_ds", "dhf_ds"):
                 torch.testing.assert_close(
                     getattr(config.cg, field)[:, i], getattr(expected.cg, field)
                 )

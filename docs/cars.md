@@ -29,21 +29,25 @@ $\mathbf{x}_g$ is fixed however the car is oriented.
 Every car provides these properties, which are everything the simulation needs to
 know about it:
 
-| Property | Symbol | Description | SI unit |
-| --- | --- | --- | --- |
-| `cg` | $\mathbf{x}_g$ | Center of gravity relative to the rear axle, in the body frame | m |
-| `wheelbase` | $w$ | Distance between the axle centers | m |
-| `front_offset` | $d$ | Distance from the rear axle to the front of the car | m |
-| `mass` | $M$ | Total mass, including the wheels | kg |
-| `body_inertia` | $I_b$ | Pitching moment of inertia about the center of gravity | kg m² |
-| `n_rear_wheels`, `n_front_wheels` | $n_r$, $n_f$ | Number of wheels on the track at each axle | - |
-| `rear_wheel_inertia`, `front_wheel_inertia` | $I_r$, $I_f$ | Moment of inertia of each wheel about its axle | kg m² |
-| `rear_wheel_radius`, `front_wheel_radius` | $r_r$, $r_f$ | Wheel radius | m |
-| `rear_axle_radius`, `front_axle_radius` | $a_r$, $a_f$ | Axle radius | m |
-| `rear_axle_friction`, `front_axle_friction` | $\mu_r$, $\mu_f$ | Wheel to axle friction coefficient | - |
-| `frontal_area` | $A$ | Cross-sectional area facing the air | m² |
-| `drag_coefficient` | $C_d$ | Aerodynamic drag coefficient | - |
-| `rolling_friction` | $c_r$ | Rolling friction coefficient of the wheels on the track | - |
+| Property | Symbol | Description | SI unit | Used by |
+| --- | --- | --- | --- | --- |
+| `cg` | $\mathbf{x}_g$ | Center of gravity relative to the rear axle, in the body frame | m | all |
+| `wheelbase` | $w$ | Distance between the axle centers | m | all |
+| `front_offset` | $d$ | Distance from the rear axle to the front of the car | m | start and finish |
+| `mass` | $M$ | Total mass, including the wheels | kg | `gravity`, `translation` |
+| `body_inertia` | $I_b$ | Pitching moment of inertia about the center of gravity | kg m² | `body_rotation` |
+| `n_rear_wheels`, `n_front_wheels` | $n_r$, $n_f$ | Number of wheels on the track at each axle | - | `wheel_spin` |
+| `rear_wheel_inertia`, `front_wheel_inertia` | $I_r$, $I_f$ | Moment of inertia of each wheel about its axle | kg m² | `wheel_spin` |
+| `rear_wheel_radius`, `front_wheel_radius` | $r_r$, $r_f$ | Wheel radius | m | all |
+| `rear_axle_radius`, `front_axle_radius` | $a_r$, $a_f$ | Axle radius | m | `axle_friction` |
+| `rear_axle_friction`, `front_axle_friction` | $\mu_r$, $\mu_f$ | Wheel to axle friction coefficient | - | `axle_friction` |
+| `frontal_area` | $A$ | Cross-sectional area facing the air | m² | `drag` |
+| `drag_coefficient` | $C_d$ | Aerodynamic drag coefficient | - | `drag` |
+| `rolling_friction` | $c_r$ | Rolling friction coefficient of the wheels on the track | - | `rolling_friction` |
+
+The last column lists the [physics terms](simulation.md#physics-terms) that use each
+property.  The geometry (`cg`, `wheelbase`, and the wheel radii) locates the car on
+the track, so every term depends on it.
 
 A few notes:
 
@@ -52,8 +56,9 @@ A few notes:
   the front matters, not the total length of the car.
 - **Wheel counts.**  Cars normally have two wheels on each axle.  A popular trick is
   to raise one front wheel so it never touches the track, giving
-  $n_f = 1$.  The wheel inertias and friction apply per wheel, so the counts
-  scale them.
+  $n_f = 1$.  The wheel inertias are per wheel, so the counts scale the energy
+  of the spinning wheels.  Friction depends on the total load on each axle, which
+  doesn't change with the number of wheels sharing it.
 - **Axle friction.**  Friction between a wheel and its axle acts at the axle
   radius, so it resists the car with a force of $\mu N a / r$ at the wheel rim, for
   a normal load $N$.  Thin axles and large wheels reduce it.

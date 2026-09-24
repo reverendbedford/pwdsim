@@ -3,7 +3,7 @@ import pytest
 import torch
 from test_kinematics import make_car
 
-from pwdsim.plotting import plot_car, plot_energy, plot_run, plot_track
+from pwdsim.plotting import plot_car, plot_energy, plot_run, plot_runs, plot_track
 from pwdsim.simulation import Simulation
 from pwdsim.track import besttrack
 from pwdsim.units import INCH
@@ -25,7 +25,7 @@ def test_plot_track_bad_unit():
 
 @pytest.fixture(scope="module")
 def run():
-    cg = torch.tensor([[1.0, 0.4], [0.5, 0.4]]) * INCH
+    cg = torch.tensor([[1.0, 0.4], [1.5, 0.4]]) * INCH
     sim = Simulation(besttrack(35), make_car(cg=cg), dt=2e-3, duration=2.5)
     return sim()
 
@@ -45,3 +45,10 @@ def test_plot_energy(run):
 def test_plot_car(run):
     fig = plot_car(run.simulation, [2.2, 2.6, 3.0], index=1)
     assert len(fig.axes[0].patches) == 6
+
+
+def test_plot_runs(run):
+    fig = plot_runs([run, run], labels=["a", "b", "c", "d"])
+    assert len(fig.axes[0].get_lines()) == 8  # speeds and finish lines
+    with pytest.raises(ValueError):
+        plot_runs([run, run], labels=["a", "b"])

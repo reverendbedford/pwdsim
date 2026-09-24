@@ -12,10 +12,11 @@ pwdsim simulates, visualizes, and optimizes pinewood derby cars:
 - **Visualization**: plot the track, the car, and its run.
 
 !!! note "Status"
-    Early development.  The forward simulation works, with gradients from the
-    adjoint method, for cars rolling under gravity without friction or drag.  The
-    rotational inertia of the wheels and body, aerodynamic drag, axle and rolling
-    friction, and optimization routines are next.
+    Early development.  The forward simulation works, with the full physics of the
+    model: gravity, the translation and pitching of the car, the spin of its
+    wheels, aerodynamic drag, and axle and rolling friction, with gradients from the
+    adjoint method.  Optimization routines and cars described by their shape are
+    next.
 
 ## Quick start
 
@@ -76,13 +77,17 @@ $$
 + \frac{\partial F}{\partial \dot{q}_i} = Q_i,
 $$
 
-assembled from modular physics terms that can be switched on and off.  So far these
-are the gravitational potential energy $V = M g\, y_g$ and the kinetic energy of the
-car moving with its center of gravity, $T = \tfrac{1}{2} M |\dot{\mathbf{x}}_g|^2$.
-The wheel spin, body pitch, drag, and friction terms will slot into the same
-framework.  The constraint forces $Q_i$ holding the axles on the track are the
-normal forces on the wheels, and the simulation warns if one goes negative: a wheel
-lifting off the track.
+assembled from modular physics terms that can be switched on and off:
+
+- the gravitational potential energy, $V = M g\, y_g$;
+- the kinetic energy of the car moving with its center of gravity and pitching
+  through the curve, and of its wheels spinning as they roll;
+- the Rayleigh dissipation of aerodynamic drag, axle friction, and rolling friction.
+
+The constraint forces $Q_i$ holding the axles on the track are the normal forces on
+the wheels.  Axle and rolling friction are proportional to them, so the simulation
+solves for the acceleration and the normal forces together.  It warns if a normal
+force goes negative: a wheel lifting off the track.
 
 The model is documented piece by piece:
 

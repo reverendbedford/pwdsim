@@ -8,8 +8,9 @@ lift directions define the normal forces (as constraint forces), so we need
 derivatives with respect to them.
 
 This module computes the positions of points on the car along with their analytic
-derivatives: the first three derivatives with respect to $s$ and the first
-derivatives with respect to $h_r$ and $h_f$.
+derivatives: the first three derivatives with respect to $s$, the first derivatives
+with respect to $h_r$ and $h_f$, and the mixed derivatives with respect to $s$ and
+the lifts.
 
 The track provides the unit tangent $t = (\\cos\\theta, \\sin\\theta)$ and
 normal $n = (-\\sin\\theta, \\cos\\theta)$, with $t' = \\kappa n$ and
@@ -45,6 +46,8 @@ class Derivatives:
         dsss: third derivative with respect to $s$.
         dhr: first derivative with respect to the rear lift $h_r$.
         dhf: first derivative with respect to the front lift $h_f$.
+        dhr_ds: mixed derivative with respect to $h_r$ and $s$.
+        dhf_ds: mixed derivative with respect to $h_f$ and $s$.
     """
 
     value: torch.Tensor
@@ -53,6 +56,31 @@ class Derivatives:
     dsss: torch.Tensor
     dhr: torch.Tensor
     dhf: torch.Tensor
+    dhr_ds: torch.Tensor
+    dhf_ds: torch.Tensor
+
+
+FIELDS = ("value", "ds", "dss", "dsss", "dhr", "dhf", "dhr_ds", "dhf_ds")
+"""Names of the fields of [`Derivatives`][pwdsim.kinematics.Derivatives]."""
+
+
+@dataclass
+class TrackPoint:
+    """The track at a contact point.
+
+    Attributes:
+        location: arc length location of the point.
+        angle: track angle $\\theta$.
+        curvature: curvature $\\kappa$.
+        dcurvature: curvature derivative $\\kappa'$.
+        ddcurvature: curvature second derivative $\\kappa''$.
+    """
+
+    location: torch.Tensor
+    angle: torch.Tensor
+    curvature: torch.Tensor
+    dcurvature: torch.Tensor
+    ddcurvature: torch.Tensor
 
 
 def _dot(a, b):
@@ -72,28 +100,48 @@ def _vec(x, y):
     return torch.stack([x, y], dim=-1)
 
 
-def _offset_curve(track: Track, sigma, offset):
+@dataclass
+class _OffsetCurve:
+    """An offset curve $c(\\sigma) = p(\\sigma) + r n(\\sigma)$ at a point."""
+
+    c: torch.Tensor
+    c1: torch.Tensor
+    c2: torch.Tensor
+    c3: torch.Tensor
+    t: torch.Tensor
+    n: torch.Tensor
+    track: TrackPoint
+
+
+def _offset_curve(track: Track, sigma, offset) -> _OffsetCurve:
     """Offset curve $c(\\sigma) = p(\\sigma) + r n(\\sigma)$ and its first three
-    derivatives with respect to $\\sigma$, along with the track normal."""
-    theta = track.angle(sigma)
-    kappa = track.curvature(sigma)
-    dkappa = track.curvature_derivative(sigma)
-    ddkappa = track.curvature_second_derivative(sigma)
+    derivatives with respect to $\\sigma$, along with the track tangent and normal."""
+    point = TrackPoint(
+        location=sigma,
+        angle=track.angle(sigma),
+        curvature=track.curvature(sigma),
+        dcurvature=track.curvature_derivative(sigma),
+        ddcurvature=track.curvature_second_derivative(sigma),
+    )
+    kappa, dkappa = point.curvature, point.dcurvature
     x, y = track.position(sigma)
-    t = _vec(torch.cos(theta), torch.sin(theta))
+    t = _vec(torch.cos(point.angle), torch.sin(point.angle))
     n = _rot(t)
 
     alpha = 1 - offset * kappa
     dalpha = -offset * dkappa
-    ddalpha = -offset * ddkappa
+    ddalpha = -offset * point.ddcurvature
 
-    c = _vec(x, y) + offset[..., None] * n
-    c1 = alpha[..., None] * t
-    c2 = dalpha[..., None] * t + (alpha * kappa)[..., None] * n
-    c3 = (ddalpha - alpha * kappa**2)[..., None] * t + (
-        2 * dalpha * kappa + alpha * dkappa
-    )[..., None] * n
-    return c, c1, c2, c3, n
+    return _OffsetCurve(
+        c=_vec(x, y) + offset[..., None] * n,
+        c1=alpha[..., None] * t,
+        c2=dalpha[..., None] * t + (alpha * kappa)[..., None] * n,
+        c3=(ddalpha - alpha * kappa**2)[..., None] * t
+        + (2 * dalpha * kappa + alpha * dkappa)[..., None] * n,
+        t=t,
+        n=n,
+        track=point,
+    )
 
 
 class Configuration:
@@ -110,6 +158,8 @@ class Configuration:
         front_contact: arc length location of the front wheel contact, $\\sigma$.
         pitch: pitch angle of the car body, $\\phi$, the angle of $u$ from the
             horizontal.
+        rear_track: the track at the rear wheel contact, $s$.
+        front_track: the track at the front wheel contact, $\\sigma$.
     """
 
     def __init__(
@@ -118,11 +168,15 @@ class Configuration:
         rear_axle: Derivatives,
         axis: Derivatives,
         front_contact: Derivatives,
+        rear_track: TrackPoint,
+        front_track: TrackPoint,
     ):
         self.car = car
         self.rear_axle = rear_axle
         self.axis = axis
         self.front_contact = front_contact
+        self.rear_track = rear_track
+        self.front_track = front_track
         self.pitch = self._pitch()
 
     def point(self, xi, eta) -> Derivatives:
@@ -137,7 +191,7 @@ class Configuration:
         return Derivatives(
             *(
                 getattr(R, f) + xi * getattr(u, f) + eta * _rot(getattr(u, f))
-                for f in ("value", "ds", "dss", "dsss", "dhr", "dhf")
+                for f in FIELDS
             )
         )
 
@@ -165,6 +219,8 @@ class Configuration:
             dsss=_cross(u.ds, u.dss) + _cross(u.value, u.dsss),
             dhr=_cross(u.value, u.dhr),
             dhf=_cross(u.value, u.dhf),
+            dhr_ds=_cross(u.ds, u.dhr) + _cross(u.value, u.dhr_ds),
+            dhf_ds=_cross(u.ds, u.dhf) + _cross(u.value, u.dhf_ds),
         )
 
 
@@ -205,9 +261,11 @@ class CarKinematics:
         shape = torch.broadcast_shapes(s.shape, r_rear.shape, r_front.shape, w.shape)
         s = s.expand(shape)
 
-        R, R1, R2, R3, n_rear = _offset_curve(self.track, s, r_rear.expand(shape))
+        rear = _offset_curve(self.track, s, r_rear.expand(shape))
+        R, R1, R2, R3 = rear.c, rear.c1, rear.c2, rear.c3
         sigma = self._front_contact(s, R, r_front.expand(shape), w)
-        C, C1, C2, C3, n_front = _offset_curve(self.track, sigma, r_front.expand(shape))
+        front = _offset_curve(self.track, sigma, r_front.expand(shape))
+        C, C1, C2, C3 = front.c, front.c1, front.c2, front.c3
 
         # Derivatives of the front contact location, from differentiating
         # D . D = w^2 with D = C(sigma(s)) - R(s)
@@ -230,17 +288,46 @@ class CarKinematics:
             - R3
         )
 
-        # Lift derivatives: R_hr = n(s), C_hf = n(sigma)
+        # Lift derivatives, from D . D_h = 0, with R_hr = n(s) and C_hf = n(sigma)
+        n_rear, n_front = rear.n, front.n
         sigma_hr = _dot(D, n_rear) / DC1
         sigma_hf = -_dot(D, n_front) / DC1
         D_hr = sigma_hr[..., None] * C1 - n_rear
         D_hf = sigma_hf[..., None] * C1 + n_front
 
+        # Mixed derivatives, from differentiating D . D_h = 0 with respect to s,
+        # using n' = -kappa t
+        dn_rear = -rear.track.curvature[..., None] * rear.t
+        dn_front = -front.track.curvature[..., None] * front.t
+        sigma_hr_s = (
+            -_dot(D1, D_hr) - sigma_hr * sigma1 * _dot(D, C2) + _dot(D, dn_rear)
+        ) / DC1
+        sigma_hf_s = (
+            -_dot(D1, D_hf)
+            - sigma_hf * sigma1 * _dot(D, C2)
+            - sigma1 * _dot(D, dn_front)
+        ) / DC1
+        D_hr_s = (
+            sigma_hr_s[..., None] * C1 + (sigma_hr * sigma1)[..., None] * C2 - dn_rear
+        )
+        D_hf_s = (
+            sigma_hf_s[..., None] * C1
+            + (sigma_hf * sigma1)[..., None] * C2
+            + sigma1[..., None] * dn_front
+        )
+
         w = w[..., None]
-        rear_axle = Derivatives(R, R1, R2, R3, n_rear, torch.zeros_like(R))
-        axis = Derivatives(D / w, D1 / w, D2 / w, D3 / w, D_hr / w, D_hf / w)
-        front_contact = Derivatives(sigma, sigma1, sigma2, sigma3, sigma_hr, sigma_hf)
-        return Configuration(car, rear_axle, axis, front_contact)
+        zero = torch.zeros_like(R)
+        rear_axle = Derivatives(R, R1, R2, R3, n_rear, zero, dn_rear, zero)
+        axis = Derivatives(
+            D / w, D1 / w, D2 / w, D3 / w, D_hr / w, D_hf / w, D_hr_s / w, D_hf_s / w
+        )
+        front_contact = Derivatives(
+            sigma, sigma1, sigma2, sigma3, sigma_hr, sigma_hf, sigma_hr_s, sigma_hf_s
+        )
+        return Configuration(
+            car, rear_axle, axis, front_contact, rear.track, front.track
+        )
 
     def _front_contact(self, s, R, r_front, w):
         """Solve $|c_f(\\sigma) - R| = w$ for the front contact location $\\sigma$.
@@ -250,9 +337,9 @@ class CarKinematics:
         """
 
         def newton_step(sigma):
-            c, c1, _, _, _ = _offset_curve(self.track, sigma, r_front)
-            D = c - R
-            return sigma - (_dot(D, D) - w**2) / (2 * _dot(D, c1))
+            curve = _offset_curve(self.track, sigma, r_front)
+            D = curve.c - R
+            return sigma - (_dot(D, D) - w**2) / (2 * _dot(D, curve.c1))
 
         with torch.no_grad():
             sigma = (s + w).detach()

@@ -22,14 +22,14 @@ pwdsim is in early development.  What works now:
 - **Cars**: cars described directly by their essential properties, as trainable
   torch parameters, with batches of designs simulated together.
 - **Forward simulation**: races a car down the track and reports its finish time,
-  speed, and the normal forces on its wheels, warning if a wheel lifts off the
-  track.  Gradients of the results with respect to every car parameter come from the
-  adjoint method.  The physics so far is gravity and the translational kinetic
-  energy of the car, so the car rolls without friction or drag.
+  speed, energy budget, and the normal forces on its wheels, warning if a wheel
+  lifts off the track.  Gradients of the results with respect to every car
+  parameter come from the adjoint method.  The physics covers gravity, the
+  translation and pitching of the car, the spin of its wheels, aerodynamic drag, and
+  axle and rolling friction, and each piece can be switched on and off.
 - **Visualization**: plots of the track, the car on the track, and its run.
 
-Next up: the rotational inertia of the wheels and body, aerodynamic drag, axle and
-rolling friction, optimization routines, and cars described by their shape.
+Next up: optimization routines, and cars described by their shape.
 
 ## Quick start
 
@@ -109,12 +109,15 @@ Global parameters are gravitational acceleration $g$ and air density $\rho$.
 
 **Dynamics.** The equation of motion comes from Lagrange's equations with a Rayleigh
 dissipation function.  It is assembled from modular physics terms, which can be
-switched on and off: potential energy (gravity), kinetic energy (the translation of
-the car, and later the pitching of the body and the spin of the wheels), and
-dissipation (later drag, axle friction, and rolling friction).  The normal forces at
-each axle come out as the constraint forces holding the axles on the track, so they
-automatically include every enabled term.  The simulation flags when the model's
-assumptions break down, such as a wheel lifting off the track.
+switched on and off: potential energy (gravity), kinetic energy (the translation and
+pitching of the car, and the spin of the wheels rolling without slip), and
+dissipation (drag, axle friction, and rolling friction).  The normal forces at each
+axle come out as the constraint forces holding the axles on the track, so they
+automatically include every enabled term.  Friction is proportional to the normal
+forces, so the acceleration and normal forces are solved for together.  The
+simulation flags when the model's assumptions break down, such as a wheel lifting
+off the track.  `pwdsim.full_physics()` (the default) includes every term, and
+`pwdsim.simple_physics()` just gravity and translation.
 
 **Time integration.** [pyzag](https://github.com/applied-material-modeling/pyzag)
 integrates the equation of motion with the backward Euler method, and provides

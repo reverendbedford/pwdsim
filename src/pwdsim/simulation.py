@@ -44,40 +44,69 @@ class DidNotFinishWarning(UserWarning):
     """The car did not reach the finish line in the simulated time."""
 
 
-@dataclass
-class GeneralizedForces:
-    """The assembled terms of the equation of motion at a set of states.
-
-    Attributes:
-        mass: effective mass $M(s) = \\sum m J_s \\cdot J_s$.
-        dmass: $M'(s)$.
-        coriolis: $C(s) = \\sum m J_s \\cdot J_s'$, so the inertial force is
-            $M a + C v^2$.
-        dcoriolis: $C'(s)$.
-        potential: $V_s$, the potential energy gradient.
-        dpotential: $V_{ss}$.
-        dissipation: $D_s = \\partial F / \\partial \\dot s$.
-        ddissipation_ds: $\\partial D_s / \\partial s$.
-        ddissipation_dv: $\\partial D_s / \\partial v$.
-    """
-
-    mass: torch.Tensor
-    dmass: torch.Tensor
-    coriolis: torch.Tensor
-    dcoriolis: torch.Tensor
-    potential: torch.Tensor
-    dpotential: torch.Tensor
-    dissipation: torch.Tensor
-    ddissipation_ds: torch.Tensor
-    ddissipation_dv: torch.Tensor
-
-
 def _dot(a, b):
     return torch.sum(a * b, dim=-1)
 
 
+@dataclass
+class LinearSystem:
+    """The equations of motion on the track as a linear system $K x = b$ for
+    $x = (a, N_r, N_f)$, along with the derivatives of $K$ and $b$ with respect to
+    $s$ and $v$.
+
+    The first row is the equation of motion along $s$ and the others give the normal
+    forces, the constraint forces along the lifts.  Friction proportional to the
+    normal forces couples them.
+
+    Attributes:
+        K: the matrix, with shape `(..., 3, 3)`.
+        b: the right hand side, with shape `(..., 3)`.
+        K_ds: $\\partial K / \\partial s$.
+        b_ds: $\\partial b / \\partial s$.
+        K_dv: $\\partial K / \\partial v$.
+        b_dv: $\\partial b / \\partial v$.
+        mass: the effective mass $M(s) = \\sum m J_s \\cdot J_s$.
+        potential: the potential energy.
+        dissipation: the dissipative force along $s$ that doesn't depend on the
+            normal forces, $D^0_s$.
+        friction: the friction coefficients along $s$, $c_k$, so the total
+            dissipative force along $s$ is $D^0_s + \\sum_k c_k N_k$, with shape
+            `(..., 2)`.
+    """
+
+    K: torch.Tensor
+    b: torch.Tensor
+    K_ds: torch.Tensor
+    b_ds: torch.Tensor
+    K_dv: torch.Tensor
+    b_dv: torch.Tensor
+    mass: torch.Tensor
+    potential: torch.Tensor
+    dissipation: torch.Tensor
+    friction: torch.Tensor
+
+
+LIFTS = (("dhr", "dhr_ds", "hr"), ("dhf", "dhf_ds", "hf"))
+
+
 class EquationsOfMotion:
-    """Assembles the enabled physics terms into the equation of motion.
+    """Assembles the enabled physics terms into the equations of motion.
+
+    The equation of motion along $s$ is
+
+    $$
+    M a + C v^2 + V_s + D^0_s + \\sum_k c_k N_k = 0,
+    $$
+
+    and the normal forces, the constraint forces along the lifts, are
+
+    $$
+    N_j = A_j a + B_j + \\sum_k e_{jk} N_k,
+    $$
+
+    where the $N_k$ terms come from friction proportional to the normal forces.
+    Together these are a linear system for $(a, N_r, N_f)$ at each state; see
+    [`system`][pwdsim.simulation.EquationsOfMotion.system].
 
     Args:
         kinematics: the car on the track.
@@ -99,68 +128,160 @@ class EquationsOfMotion:
     def _of_kind(self, kind):
         return [term for term in self.terms if isinstance(term, kind)]
 
-    def _rates(self, config):
-        return [
-            rate
-            for term in self._of_kind(KineticTerm)
-            for rate in term.rates(config, self.car, self.env)
+    def system(self, s, v) -> LinearSystem:
+        """Assemble the linear system for $(a, N_r, N_f)$ at the states $(s, v)$."""
+        if not self._of_kind(KineticTerm):
+            raise ValueError("The equation of motion needs a kinetic energy term")
+        s = torch.as_tensor(s, dtype=DTYPE)
+        v = torch.as_tensor(v, dtype=DTYPE)
+        config = self.kinematics.evaluate(s)
+        car, env = self.car, self.env
+        rates = [
+            r for t in self._of_kind(KineticTerm) for r in t.rates(config, car, env)
         ]
-
-    def _potentials(self, config):
-        return [
-            term.potential(config, self.car, self.env)
-            for term in self._of_kind(PotentialTerm)
+        potentials = [
+            t.potential(config, car, env) for t in self._of_kind(PotentialTerm)
         ]
-
-    def _dissipations(self, config, v):
-        return [
-            term.dissipation(config, v, self.car, self.env)
-            for term in self._of_kind(DissipativeTerm)
+        dissipative = self._of_kind(DissipativeTerm)
+        dissipations = [
+            d for t in dissipative if (d := t.dissipation(config, v, car, env))
         ]
+        frictions = [f for t in dissipative for f in t.frictions(config, car, env)]
 
-    def generalized_forces(self, config: Configuration, v) -> GeneralizedForces:
-        """The terms of the equation of motion along $s$."""
-        zero = torch.zeros_like(config.front_contact.value)
+        zero = torch.zeros_like(config.front_contact.value * v)
 
         def total(values):
             return sum(values, zero)
 
-        rates = self._rates(config)
-        potentials = self._potentials(config)
-        dissipations = self._dissipations(config, v)
-        return GeneralizedForces(
-            mass=total(r.weight * _dot(r.ds, r.ds) for r in rates),
-            dmass=total(2 * r.weight * _dot(r.ds, r.dss) for r in rates),
-            coriolis=total(r.weight * _dot(r.ds, r.dss) for r in rates),
-            dcoriolis=total(
-                r.weight * (_dot(r.dss, r.dss) + _dot(r.ds, r.dsss)) for r in rates
-            ),
-            potential=total(p.ds for p in potentials),
-            dpotential=total(p.dss for p in potentials),
-            dissipation=total(d.s for d in dissipations),
-            ddissipation_ds=total(d.s_ds for d in dissipations),
-            ddissipation_dv=total(d.s_dv for d in dissipations),
+        def weighted(rate, a, b):
+            return rate.weight * _dot(a, b)
+
+        # Along s: M a + C v^2 + V_s + D_s = 0
+        mass = total(weighted(r, r.ds, r.ds) for r in rates)
+        dmass = total(2 * weighted(r, r.ds, r.dss) for r in rates)
+        coriolis = total(weighted(r, r.ds, r.dss) for r in rates)
+        dcoriolis = total(
+            weighted(r, r.dss, r.dss) + weighted(r, r.ds, r.dsss) for r in rates
         )
+        b_s = -(
+            coriolis * v**2
+            + total(p.ds for p in potentials)
+            + total(d.s for d in dissipations)
+        )
+        b_s_ds = -(
+            dcoriolis * v**2
+            + total(p.dss for p in potentials)
+            + total(d.s_ds for d in dissipations)
+        )
+        b_s_dv = -(2 * coriolis * v + total(d.s_dv for d in dissipations))
+
+        # Along the lifts: N_j = A_j a + B_j + sum_k e_jk N_k
+        A, A_ds, B, B_ds, B_dv = [], [], [], [], []
+        for lift, lift_ds, dissipation in LIFTS:
+            A.append(total(weighted(r, getattr(r, lift), r.ds) for r in rates))
+            A_ds.append(
+                total(
+                    weighted(r, getattr(r, lift_ds), r.ds)
+                    + weighted(r, getattr(r, lift), r.dss)
+                    for r in rates
+                )
+            )
+            inertia = total(weighted(r, getattr(r, lift), r.dss) for r in rates)
+            dinertia = total(
+                weighted(r, getattr(r, lift_ds), r.dss)
+                + weighted(r, getattr(r, lift), r.dsss)
+                for r in rates
+            )
+            B.append(
+                inertia * v**2
+                + total(getattr(p, lift) for p in potentials)
+                + total(getattr(d, dissipation) for d in dissipations)
+            )
+            B_ds.append(
+                dinertia * v**2
+                + total(getattr(p, lift_ds) for p in potentials)
+                + total(getattr(d, f"{dissipation}_ds") for d in dissipations)
+            )
+            B_dv.append(
+                2 * inertia * v
+                + total(getattr(d, f"{dissipation}_dv") for d in dissipations)
+            )
+
+        # Friction proportional to the normal forces, F = coef N_k |rho|, with
+        # sgn(rho) = sgn(J_s) tanh(v / v_reg)
+        c = [[zero, zero, zero] for _ in range(2)]  # c_k and its s, v derivatives
+        e = [[[zero, zero, zero] for _ in range(2)] for _ in range(2)]  # e_jk
+        for f in frictions:
+            rate = f.rate
+            sign = torch.sign(rate.ds)
+            tanh = torch.tanh(v / f.regularization)
+            dtanh = (1 - tanh**2) / f.regularization
+            k = f.axle
+            c[k][0] = c[k][0] + f.coefficient * rate.ds.abs() * tanh
+            c[k][1] = c[k][1] + f.coefficient * sign * rate.dss * tanh
+            c[k][2] = c[k][2] + f.coefficient * rate.ds.abs() * dtanh
+            for j, (lift, lift_ds, _) in enumerate(LIFTS):
+                J, J_ds = getattr(rate, lift), getattr(rate, lift_ds)
+                e[j][k][0] = e[j][k][0] + f.coefficient * sign * tanh * J
+                e[j][k][1] = e[j][k][1] + f.coefficient * sign * tanh * J_ds
+                e[j][k][2] = e[j][k][2] + f.coefficient * sign * dtanh * J
+
+        def matrix(i):
+            """K (i = 0) or its derivative with respect to s (i = 1) or v (i = 2)."""
+            first = (mass, dmass, zero)[i]
+            rows = [[first, c[0][i], c[1][i]]]
+            for j in range(2):
+                a_term = (-A[j], -A_ds[j], zero)[i]
+                identity = [(1.0 if (k == j and i == 0) else 0.0) for k in range(2)]
+                rows.append(
+                    [a_term] + [identity[k] - e[j][k][i] + zero for k in range(2)]
+                )
+            return torch.stack([torch.stack(row, dim=-1) for row in rows], dim=-2)
+
+        return LinearSystem(
+            K=matrix(0),
+            b=torch.stack([b_s, *B], dim=-1),
+            K_ds=matrix(1),
+            b_ds=torch.stack([b_s_ds, *B_ds], dim=-1),
+            K_dv=matrix(2),
+            b_dv=torch.stack([b_s_dv, *B_dv], dim=-1),
+            mass=mass,
+            potential=total(p.value for p in potentials),
+            dissipation=total(d.s for d in dissipations),
+            friction=torch.stack([c[0][0], c[1][0]], dim=-1),
+        )
+
+    def solve(self, s, v) -> tuple[torch.Tensor, torch.Tensor]:
+        """The acceleration $a$ and the normal forces $(N_r, N_f)$, in a trailing
+        dimension."""
+        system = self.system(s, v)
+        x = torch.linalg.solve(system.K, system.b)
+        return x[..., 0], x[..., 1:]
 
     def acceleration(self, s, v) -> torch.Tensor:
         """The acceleration $a = \\ddot{s}$."""
-        return self.acceleration_and_jacobian(s, v)[0]
+        return self.solve(s, v)[0]
 
     def acceleration_and_jacobian(
         self, s, v
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """The acceleration $a$ and its derivatives $\\partial a / \\partial s$ and
-        $\\partial a / \\partial v$."""
-        if not self._of_kind(KineticTerm):
-            raise ValueError("The equation of motion needs a kinetic energy term")
-        f = self.generalized_forces(self.kinematics.evaluate(s), v)
-        a = -(f.coriolis * v**2 + f.potential + f.dissipation) / f.mass
-        da_dv = -(2 * f.coriolis * v + f.ddissipation_dv) / f.mass
-        da_ds = (
-            -(f.dcoriolis * v**2 + f.dpotential + f.ddissipation_ds + a * f.dmass)
-            / f.mass
+        $\\partial a / \\partial v$.
+
+        Differentiating $K x = b$ gives $x_{,s} = K^{-1}(b_{,s} - K_{,s} x)$, and
+        likewise for $v$.
+        """
+        system = self.system(s, v)
+        x = torch.linalg.solve(system.K, system.b)
+        rhs = torch.stack(
+            [
+                system.b_ds - (system.K_ds @ x[..., None])[..., 0],
+                system.b_dv - (system.K_dv @ x[..., None])[..., 0],
+            ],
+            dim=-1,
         )
-        return a, da_ds, da_dv
+        dx = torch.linalg.solve(system.K, rhs)
+        return x[..., 0], dx[..., 0, 0], dx[..., 0, 1]
 
     def normal_forces(self, s, v) -> torch.Tensor:
         """Normal forces at the rear and front axles, in a trailing dimension.
@@ -169,34 +290,22 @@ class EquationsOfMotion:
         from the Euler-Lagrange equations along $h_r$ and $h_f$.  A positive force
         pushes the car away from the track.
         """
-        config = self.kinematics.evaluate(s)
-        a = self.acceleration(s, v)
-        rates = self._rates(config)
-        potentials = self._potentials(config)
-        dissipations = self._dissipations(config, v)
-        forces = []
-        for lift, dissipation in (("dhr", "hr"), ("dhf", "hf")):
-            # Inertial force m J_h . (J_s a + J_s' v^2) for each rate
-            force = sum(
-                r.weight
-                * _dot(
-                    getattr(r, lift), r.ds * a[..., None] + r.dss * (v**2)[..., None]
-                )
-                for r in rates
-            )
-            force = force + sum(getattr(p, lift) for p in potentials)
-            force = force + sum(getattr(d, dissipation) for d in dissipations)
-            forces.append(force + torch.zeros_like(a))
-        return torch.stack(forces, dim=-1)
+        return self.solve(s, v)[1]
 
     def energy(self, s, v) -> tuple[torch.Tensor, torch.Tensor]:
         """Kinetic and potential energy."""
-        config = self.kinematics.evaluate(s)
-        f = self.generalized_forces(config, v)
-        potential = sum(
-            (p.value for p in self._potentials(config)), torch.zeros_like(f.mass)
+        system = self.system(s, v)
+        v = torch.as_tensor(v, dtype=DTYPE)
+        return 0.5 * system.mass * v**2, system.potential + torch.zeros_like(
+            system.mass
         )
-        return 0.5 * f.mass * v**2, potential
+
+    def power(self, s, v) -> torch.Tensor:
+        """Power dissipated by the dissipative terms, $v D_s$."""
+        system = self.system(s, v)
+        x = torch.linalg.solve(system.K, system.b)
+        v = torch.as_tensor(v, dtype=DTYPE)
+        return v * (system.dissipation + _dot(system.friction, x[..., 1:]))
 
 
 class CarODE(nn.Module):
@@ -311,11 +420,12 @@ class Simulation(nn.Module):
         s0 = self.kinematics.start_position().expand(shape)
         y0 = torch.stack([s0, torch.zeros_like(s0)], dim=-1)
 
+        equations = self.equations
         with warnings.catch_warnings():
             # pyzag warns about a torch.compile setting that doesn't affect us
             warnings.filterwarnings("ignore", message="pyzag lowered")
             solver = nonlinear.RecursiveNonlinearEquationSolver(
-                _INTEGRATORS[self.integrator](CarODE(self.car, self.equations)),
+                _INTEGRATORS[self.integrator](CarODE(self.car, equations)),
                 step_generator=nonlinear.StepGenerator(self.block_size),
                 predictor=nonlinear.PreviousStepsPredictor(),
                 nonlinear_solver=ChunkNewtonRaphson(
@@ -331,7 +441,7 @@ class Simulation(nn.Module):
 
         # Drop the batch dimension added for a single car
         states = states.reshape((n, *self.car.batch_shape, 2))
-        run = Run(self, times, states)
+        run = Run(self, equations, times, states)
         run.check()
         return run
 
@@ -345,14 +455,22 @@ class Run:
 
     Args:
         simulation: the simulation that produced the run.
+        equations: the equations of motion the run was simulated with.  Results
+            are computed with these, so switching physics terms on or off after the
+            run doesn't change them.
         times: the times, with shape `(n,)`.
         states: the states $(s, v)$, with shape `(n, *batch, 2)`.
     """
 
     def __init__(
-        self, simulation: Simulation, times: torch.Tensor, states: torch.Tensor
+        self,
+        simulation: Simulation,
+        equations: EquationsOfMotion,
+        times: torch.Tensor,
+        states: torch.Tensor,
     ):
         self.simulation = simulation
+        self.equations = equations
         self.times = times
         self.states = states
 
@@ -368,7 +486,7 @@ class Run:
 
     def configuration(self) -> Configuration:
         """The car configuration at every time step."""
-        return self.simulation.kinematics.evaluate(self.s)
+        return self.equations.kinematics.evaluate(self.s)
 
     def speed(self) -> torch.Tensor:
         """Speed of the car's center of gravity."""
@@ -378,7 +496,7 @@ class Run:
     def _finish_step(self):
         """Index of the last step before the front of the car crosses the finish
         line, and the fraction of the following step at which it crosses."""
-        track = self.simulation.track
+        track = self.equations.kinematics.track
         x_front = self.configuration().front.value[..., 0]
         x_finish = track.position(track.s_finish)[0]
         crossed = x_front >= x_finish
@@ -399,7 +517,7 @@ class Run:
         """Time when the front of the car crosses the finish line, NaN for cars
         that don't finish."""
         step, fraction, finished = self._finish_step()
-        time = self.times[step] + fraction * self.simulation.dt
+        time = self.times[step] + fraction * (self.times[step + 1] - self.times[step])
         return torch.where(finished, time, torch.nan)
 
     @property
@@ -426,7 +544,7 @@ class Run:
 
     def normal_forces(self) -> torch.Tensor:
         """Normal forces at the rear and front axles, in a trailing dimension."""
-        return self.simulation.equations.normal_forces(self.s, self.v)
+        return self.equations.normal_forces(self.s, self.v)
 
     @property
     def min_normal_force(self) -> torch.Tensor:
@@ -438,12 +556,29 @@ class Run:
         return forces.min(dim=0).values
 
     def energy(self) -> dict[str, torch.Tensor]:
-        """Kinetic, potential, and total mechanical energy at each time step."""
-        kinetic, potential = self.simulation.equations.energy(self.s, self.v)
+        """The energy budget at each time step.
+
+        Returns the kinetic and potential energy, their sum (the mechanical energy),
+        the energy dissipated so far by drag and friction, and the total of the
+        mechanical and dissipated energy, which stays constant up to the error of
+        the time integration.
+        """
+        equations = self.equations
+        kinetic, potential = equations.energy(self.s, self.v)
+        power = equations.power(self.s, self.v)
+        steps = (
+            0.5
+            * (power[1:] + power[:-1])
+            * torch.diff(self.times).reshape((-1,) + (1,) * (power.ndim - 1))
+        )
+        dissipated = torch.cat([torch.zeros_like(power[:1]), torch.cumsum(steps, 0)])
+        mechanical = kinetic + potential
         return {
             "kinetic": kinetic,
             "potential": potential,
-            "total": kinetic + potential,
+            "mechanical": mechanical,
+            "dissipated": dissipated,
+            "total": mechanical + dissipated,
         }
 
     def check(self):

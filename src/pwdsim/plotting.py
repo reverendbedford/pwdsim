@@ -99,13 +99,13 @@ def plot_track(
     return fig
 
 
-def plot_run(
-    run: Run,
+def plot_runs(
+    runs: Sequence[Run],
     labels: Sequence[str] | None = None,
     unit: str = "m",
     axes: Sequence[Axes] | None = None,
 ) -> Figure:
-    """Plot the performance of a run.
+    """Compare the performance of several runs.
 
     The top panel shows the speed of the center of gravity over time, with the
     finish marked.  The bottom panel shows the normal forces at the rear (solid) and
@@ -113,8 +113,8 @@ def plot_run(
     means a wheel lifted off the track.
 
     Args:
-        run: the run to plot.  Each car in a batch gets its own line.
-        labels: optional labels for the cars in the batch.
+        runs: the runs to plot.  Each car in each run's batch gets its own line.
+        labels: optional labels, one for each car across all the runs.
         unit: length unit for the distance along the track.
         axes: optional pair of matplotlib axes to plot into.
 
@@ -127,23 +127,31 @@ def plot_run(
     ax_speed, ax_force = axes
     fig = ax_speed.figure
 
+    columns = []
     with torch.no_grad():
-        times = run.times.numpy()
-        speed = _batch_columns(run.speed()).numpy()
-        s = _batch_columns(run.s).numpy()
-        forces = run.normal_forces()
-        rear = _batch_columns(forces[..., 0]).numpy()
-        front = _batch_columns(forces[..., 1]).numpy()
-        before = _batch_columns(run._before_finish().expand(run.s.shape)).numpy()
-        finish = run.finish_time.reshape(-1).numpy()
+        for run in runs:
+            forces = run.normal_forces()
+            before = _batch_columns(run._before_finish().expand(run.s.shape)).numpy()
+            speed = _batch_columns(run.speed()).numpy()
+            s = _batch_columns(run.s).numpy()
+            rear = _batch_columns(forces[..., 0]).numpy()
+            front = _batch_columns(forces[..., 1]).numpy()
+            finish = run.finish_time.reshape(-1).numpy()
+            times = run.times.numpy()
+            for i in range(speed.shape[1]):
+                columns.append(
+                    (times, speed[:, i], s[:, i], rear[:, i], front[:, i])
+                    + (before[:, i], finish[i])
+                )
 
-    for i, label in enumerate(_labels(labels, speed.shape[1])):
-        (line,) = ax_speed.plot(times, speed[:, i], label=label)
+    for (times, speed, s, rear, front, mask, finish), label in zip(
+        columns, _labels(labels, len(columns)), strict=True
+    ):
+        (line,) = ax_speed.plot(times, speed, label=label)
         color = line.get_color()
-        ax_speed.axvline(finish[i], color=color, ls=":", lw=1)
-        mask = before[:, i]
-        ax_force.plot(s[mask, i] / scale, rear[mask, i], color=color, label=label)
-        ax_force.plot(s[mask, i] / scale, front[mask, i], color=color, ls="--")
+        ax_speed.axvline(finish, color=color, ls=":", lw=1)
+        ax_force.plot(s[mask] / scale, rear[mask], color=color, label=label)
+        ax_force.plot(s[mask] / scale, front[mask], color=color, ls="--")
 
     ax_speed.set_xlabel("time (s)")
     ax_speed.set_ylabel("speed (m/s)")
@@ -152,13 +160,37 @@ def plot_run(
     ax_force.set_xlabel(f"rear wheel location s ({unit})")
     ax_force.set_ylabel("normal force (N)")
     ax_force.set_title("Normal forces: rear (solid) and front (dashed) axles")
-    if labels is not None or speed.shape[1] > 1:
+    if labels is not None or len(columns) > 1:
         ax_speed.legend()
     return fig
 
 
+def plot_run(
+    run: Run,
+    labels: Sequence[str] | None = None,
+    unit: str = "m",
+    axes: Sequence[Axes] | None = None,
+) -> Figure:
+    """Plot the performance of a run: see [`plot_runs`][pwdsim.plotting.plot_runs].
+
+    Args:
+        run: the run to plot.  Each car in a batch gets its own line.
+        labels: optional labels for the cars in the batch.
+        unit: length unit for the distance along the track.
+        axes: optional pair of matplotlib axes to plot into.
+
+    Returns:
+        The matplotlib figure.
+    """
+    return plot_runs([run], labels=labels, unit=unit, axes=axes)
+
+
 def plot_energy(run: Run, index: int = 0, ax: Axes | None = None) -> Figure:
-    """Plot the kinetic, potential, and total energy over a run.
+    """Plot the energy budget over a run.
+
+    Shows the kinetic and potential energy, the energy dissipated by drag and
+    friction so far, and the total, which stays constant up to the error of the
+    time integration.
 
     Args:
         run: the run to plot.
@@ -172,8 +204,8 @@ def plot_energy(run: Run, index: int = 0, ax: Axes | None = None) -> Figure:
         fig, ax = plt.subplots(figsize=(10, 4), constrained_layout=True)
     with torch.no_grad():
         energy = {k: _batch_columns(v)[:, index] for k, v in run.energy().items()}
-    for name, values in energy.items():
-        ax.plot(run.times.numpy(), values.numpy(), label=name)
+    for name in ("kinetic", "potential", "dissipated", "total"):
+        ax.plot(run.times.numpy(), energy[name].numpy(), label=name)
     ax.set_xlabel("time (s)")
     ax.set_ylabel("energy (J)")
     ax.legend()
