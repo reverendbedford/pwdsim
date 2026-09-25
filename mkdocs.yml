@@ -15,6 +15,7 @@ nav:
   - Forward simulation: simulation.md
   - Examples:
       - Forward model: examples/forward_model.py
+      - Which physics matters?: examples/physics_study.py
   - API reference: api.md
 
 plugins:

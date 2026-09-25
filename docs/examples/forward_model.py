@@ -231,7 +231,8 @@ plt.show()
 
 # %% [markdown]
 # To see what each term costs, switch it off and race again.  Each row is the time
-# the car would save without that piece of physics.
+# the car would save without that piece of physics.  The
+# [which physics matters?](../physics_study/) example looks at this in more detail.
 
 # %%
 with torch.no_grad():

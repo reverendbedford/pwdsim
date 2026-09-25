@@ -61,7 +61,10 @@ plot_run(run, unit="ft")
 
 The [forward model example](examples/forward_model.py) walks through a complete
 simulation: setting up the track and the car, racing it, computing sensitivities,
-and comparing a batch of designs.
+and comparing a batch of designs.  The
+[which physics matters?](examples/physics_study.py) example switches the physics
+terms on and off to show which aspects of a car's physics, and which of its
+parameters, matter most for its speed.
 
 ## The model in brief
 

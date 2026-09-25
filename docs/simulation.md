@@ -121,7 +121,10 @@ sim.enable("drag")
 ```
 
 A [`Run`][pwdsim.simulation.Run] keeps the terms it was simulated with, so switching
-terms afterwards doesn't change its results.
+terms afterwards doesn't change its results.  The
+[which physics matters?](examples/physics_study.py) example uses this to measure
+what each term costs, and [`Run.energy_by_term`][pwdsim.simulation.Run.energy_by_term]
+to follow where the car's energy goes.
 
 ### Rates
 
@@ -283,6 +286,7 @@ from them:
 | `speed()` | speed of the center of gravity at every step |
 | `normal_forces()` | normal forces at every step |
 | `energy()` | the energy budget at every step: kinetic, potential, dissipated, and total |
+| `energy_by_term()` | the energy of each physics term at every step: stored for kinetic and potential terms, dissipated so far for dissipative terms |
 
 The energy budget integrates the power dissipated by drag and friction, $v D_s$,
 over the run.  The total of the kinetic, potential, and dissipated energy stays

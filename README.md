@@ -73,8 +73,10 @@ plot_run(run, unit="ft")
 ```
 
 The [forward model example](docs/examples/forward_model.py) walks through a
-complete simulation, and the docs (`uv run mkdocs serve`) describe the model in
-detail.
+complete simulation, and the [which physics matters?](docs/examples/physics_study.py)
+example compares the effects of the different pieces of physics and ranks the car
+parameters by their effect on the finish time.  The docs (`uv run mkdocs serve`)
+describe the model in detail.
 
 ## Model overview
 

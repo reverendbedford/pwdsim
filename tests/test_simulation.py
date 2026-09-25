@@ -15,6 +15,7 @@ from pwdsim.physics import (
     RollingFriction,
     Translation,
     WheelSpin,
+    full_physics,
     simple_physics,
 )
 from pwdsim.simulation import (
@@ -302,6 +303,20 @@ class TestFullPhysics:
             assert energy["dissipated"][-1] > 0.05 * total[0]
         assert 0 < drifts[1] < drifts[0] < 5e-3
         assert drifts[0] / drifts[1] == pytest.approx(2.0, rel=0.1)
+
+    def test_energy_by_term(self, track35):
+        run = simulate_besttrack(track35, car(), physics=None)
+        with torch.no_grad():
+            energy, terms = run.energy(), run.energy_by_term()
+        assert list(terms) == [t.name for t in full_physics()]
+        kinetic = terms["translation"] + terms["body_rotation"] + terms["wheel_spin"]
+        dissipated = terms["drag"] + terms["axle_friction"] + terms["rolling_friction"]
+        torch.testing.assert_close(kinetic, energy["kinetic"])
+        torch.testing.assert_close(terms["gravity"], energy["potential"])
+        torch.testing.assert_close(dissipated, energy["dissipated"])
+        # Every term takes some energy during the run (the body only pitches in the
+        # curve, so its energy is back to zero at the end)
+        assert all(terms[name].max() > 0 for name in terms)
 
     def test_slower_than_simple(self, track35):
         simple = simulate_besttrack(track35, car())

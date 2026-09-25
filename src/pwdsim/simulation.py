@@ -89,6 +89,16 @@ class LinearSystem:
 LIFTS = (("dhr", "dhr_ds", "hr"), ("dhf", "dhf_ds", "hf"))
 
 
+def _friction_force(friction, v):
+    """The force of a normal force friction along s per unit normal force,
+    $c |J_s| \\tanh(v / v_\\mathrm{reg})$."""
+    return (
+        friction.coefficient
+        * friction.rate.ds.abs()
+        * torch.tanh(v / friction.regularization)
+    )
+
+
 class EquationsOfMotion:
     """Assembles the enabled physics terms into the equations of motion.
 
@@ -217,7 +227,7 @@ class EquationsOfMotion:
             tanh = torch.tanh(v / f.regularization)
             dtanh = (1 - tanh**2) / f.regularization
             k = f.axle
-            c[k][0] = c[k][0] + f.coefficient * rate.ds.abs() * tanh
+            c[k][0] = c[k][0] + _friction_force(f, v)
             c[k][1] = c[k][1] + f.coefficient * sign * rate.dss * tanh
             c[k][2] = c[k][2] + f.coefficient * rate.ds.abs() * dtanh
             for j, (lift, lift_ds, _) in enumerate(LIFTS):
@@ -306,6 +316,39 @@ class EquationsOfMotion:
         x = torch.linalg.solve(system.K, system.b)
         v = torch.as_tensor(v, dtype=DTYPE)
         return v * (system.dissipation + _dot(system.friction, x[..., 1:]))
+
+    def by_term(self, s, v) -> dict[str, torch.Tensor]:
+        """The contribution of each enabled term, by name: the kinetic energy of a
+        kinetic term, the potential energy of a potential term, and the power
+        dissipated by a dissipative term.
+
+        The friction terms use the normal forces from the full equations of motion,
+        so the dissipated powers add up to
+        [`power`][pwdsim.simulation.EquationsOfMotion.power].
+        """
+        s = torch.as_tensor(s, dtype=DTYPE)
+        v = torch.as_tensor(v, dtype=DTYPE)
+        _, normal = self.solve(s, v)
+        config = self.kinematics.evaluate(s)
+        car, env = self.car, self.env
+        zero = torch.zeros_like(normal[..., 0])
+        contributions = {}
+        for term in self.terms:
+            if isinstance(term, KineticTerm):
+                value = sum(
+                    0.5 * r.weight * _dot(r.ds, r.ds) * v**2
+                    for r in term.rates(config, car, env)
+                )
+            elif isinstance(term, PotentialTerm):
+                value = term.potential(config, car, env).value
+            else:
+                dissipation = term.dissipation(config, v, car, env)
+                force = zero if dissipation is None else dissipation.s
+                for f in term.frictions(config, car, env):
+                    force = force + _friction_force(f, v) * normal[..., f.axle]
+                value = v * force
+            contributions[term.name] = value + zero
+        return contributions
 
 
 class CarODE(nn.Module):
@@ -565,13 +608,7 @@ class Run:
         """
         equations = self.equations
         kinetic, potential = equations.energy(self.s, self.v)
-        power = equations.power(self.s, self.v)
-        steps = (
-            0.5
-            * (power[1:] + power[:-1])
-            * torch.diff(self.times).reshape((-1,) + (1,) * (power.ndim - 1))
-        )
-        dissipated = torch.cat([torch.zeros_like(power[:1]), torch.cumsum(steps, 0)])
+        dissipated = self._integrate(equations.power(self.s, self.v))
         mechanical = kinetic + potential
         return {
             "kinetic": kinetic,
@@ -580,6 +617,29 @@ class Run:
             "dissipated": dissipated,
             "total": mechanical + dissipated,
         }
+
+    def energy_by_term(self) -> dict[str, torch.Tensor]:
+        """The energy of each physics term at each time step, by name.
+
+        Kinetic and potential terms give their energy.  Dissipative terms give the
+        energy they have dissipated so far.  The kinetic terms add up to the kinetic
+        energy of [`energy`][pwdsim.simulation.Run.energy], and likewise for the
+        potential and dissipated energy.
+        """
+        contributions = self.equations.by_term(self.s, self.v)
+        for term in self.equations.terms:
+            if isinstance(term, DissipativeTerm):
+                contributions[term.name] = self._integrate(contributions[term.name])
+        return contributions
+
+    def _integrate(self, power):
+        """Cumulative trapezoid rule integral of a power over time."""
+        steps = (
+            0.5
+            * (power[1:] + power[:-1])
+            * torch.diff(self.times).reshape((-1,) + (1,) * (power.ndim - 1))
+        )
+        return torch.cat([torch.zeros_like(power[:1]), torch.cumsum(steps, 0)])
 
     def check(self):
         """Warn if a car didn't finish or lifted a wheel off the track."""
