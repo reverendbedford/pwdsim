@@ -513,9 +513,29 @@ class Run:
         states: torch.Tensor,
     ):
         self.simulation = simulation
-        self.equations = equations
+        self._equations = equations
+        self._versions = self._parameter_versions()
         self.times = times
         self.states = states
+
+    def _parameter_versions(self):
+        return [p._version for p in self._equations.car.parameters()]
+
+    @property
+    def equations(self) -> EquationsOfMotion:
+        """The equations of motion the run was simulated with.
+
+        The results of a run are computed from its states and the car's parameters,
+        so they can be differentiated with respect to those parameters.  If the
+        parameters change after the run, for example in an optimization, the
+        results would be wrong, so this raises an error instead.
+        """
+        if self._parameter_versions() != self._versions:
+            raise RuntimeError(
+                "The car's parameters changed after this run, so its results would "
+                "be wrong: simulate the car again"
+            )
+        return self._equations
 
     @property
     def s(self) -> torch.Tensor:
@@ -597,6 +617,26 @@ class Run:
             self._before_finish()[..., None], self.normal_forces(), torch.inf
         )
         return forces.min(dim=0).values
+
+    def smooth_min_normal_force(self, sharpness: float = 500.0) -> torch.Tensor:
+        """A smooth version of the minimum normal force over both axles before the
+        finish, for use as an optimization constraint.
+
+        Uses the Kreisselmeier-Steinhauser aggregate
+        $-\\frac{1}{\\rho} \\log \\sum_i e^{-\\rho N_i}$ over the time steps and
+        axles.  It is never larger than the exact minimum, and at most
+        $\\ln(n) / \\rho$ smaller for $n$ values, so it errs on the safe side.
+        Unlike the exact minimum, it's differentiable everywhere.
+
+        Args:
+            sharpness: the parameter $\\rho$, in 1/N.  Larger values follow the exact
+                minimum more closely but make the aggregate less smooth.
+        """
+        forces = torch.where(
+            self._before_finish()[..., None], self.normal_forces(), torch.inf
+        )
+        forces = forces.movedim(-1, 1).flatten(0, 1)  # steps and axles together
+        return -torch.logsumexp(-sharpness * forces, dim=0) / sharpness
 
     def energy(self) -> dict[str, torch.Tensor]:
         """The energy budget at each time step.

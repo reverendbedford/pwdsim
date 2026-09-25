@@ -15,7 +15,7 @@ Generally we expect users to use notebooks to interface with the package to actu
 
 A simple modern python package. Python 3.12, uv for environment and dependency management, src layout (`src/pwdsim`).  ruff for linting, pytest for testing, coverage.py for coverage checking, mkdocs for docs.  Pre-commit hooks to enforce basic formatting and linting.
 
-Example notebooks live in `docs/examples/` as jupytext percent-format `.py` scripts (never commit `.ipynb` files).  mkdocs-jupyter executes them when building the docs, and `tests/test_examples.py` runs them as smoke tests.
+Example notebooks live in `docs/examples/` as jupytext percent-format `.py` scripts (never commit `.ipynb` files).  mkdocs-jupyter executes them when building the docs, and `tests/test_examples.py` runs them as smoke tests, marked slow: they only run with `pytest --runslow`.
 
 Use float64 throughout the simulation.  Close races differ by ~1 ms over ~2.5 s, so float32 is too noisy for finish times and their gradients.
 
@@ -96,6 +96,8 @@ Later we may need to model the effect of cars swerving in the tracks or, the cou
 As everything is done in torch we can use AD (combined with the adjoint method) to calculate parameter sensitivities and torch optimizers to tune performance.
 
 Optimization must respect constraints and bounds, both from race rules (e.g. maximum mass, length, width, clearance) and from physical validity (e.g. the wheel lift checks above); without them the optimizer will drive parameters to unphysical or illegal values.
+
+`pwdsim.optimize` (`src/pwdsim/optimization.py`) wraps SciPy's `trust-constr` (BFGS Hessian approximations, since the adjoint gives gradients but not second derivatives).  Users pass a `Simulation`, the variables to tune (car parameter names with optional `(lower, upper)` bounds; equal bounds fix an element), and constraints (`src/pwdsim/constraints.py`: `cg_between_axles`, `max_mass`, `bsa_rules`, and custom `Constraint`s).  The `lift_off` constraint, a smooth (KS) minimum of the normal forces, is always included unless `lift_off_tolerance=None`.  Variables are scaled to $[0, 1]$ between their bounds.
 
 ## Code design and package development
 

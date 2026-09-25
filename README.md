@@ -27,9 +27,13 @@ pwdsim is in early development.  What works now:
   parameter come from the adjoint method.  The physics covers gravity, the
   translation and pitching of the car, the spin of its wheels, aerodynamic drag, and
   axle and rolling friction, and each piece can be switched on and off.
+- **Optimization**: tunes chosen car parameters to minimize the finish time,
+  within bounds and constraints such as the race rules.  A constraint keeping the
+  wheels on the track is on by default.  It uses SciPy's `trust-constr` method with
+  gradients from the adjoint method.
 - **Visualization**: plots of the track, the car on the track, and its run.
 
-Next up: optimization routines, and cars described by their shape.
+Next up: cars described by their shape.
 
 ## Quick start
 
@@ -75,7 +79,9 @@ plot_run(run, unit="ft")
 The [forward model example](docs/examples/forward_model.py) walks through a
 complete simulation, and the [which physics matters?](docs/examples/physics_study.py)
 example compares the effects of the different pieces of physics and ranks the car
-parameters by their effect on the finish time.  The docs (`uv run mkdocs serve`)
+parameters by their effect on the finish time, and the
+[optimizing a car](docs/examples/optimization.py) example tunes a car's center of
+gravity and mass.  The docs (`uv run mkdocs serve`)
 describe the model in detail.
 
 ## Model overview
@@ -150,7 +156,8 @@ uv run pre-commit install
 Common tasks:
 
 ```bash
-uv run pytest                          # run the tests
+uv run pytest                          # run the tests (skipping slow ones)
+uv run pytest --runslow                # run all the tests, including the notebooks
 uv run pytest --cov --cov-report=html  # tests with coverage
 uv run ruff check . && uv run ruff format .  # lint and format
 uv run pre-commit run --all-files      # run all hooks
@@ -168,7 +175,8 @@ interactively, run `uv run jupyter lab` and open the `.py` file as a notebook
 which git ignores; edits are saved back to the `.py` script.
 
 The docs build executes the notebooks and renders their outputs, and
-`tests/test_examples.py` runs each one as a smoke test.
+`tests/test_examples.py` runs each one as a smoke test.  The notebooks take a while,
+so these tests only run with `uv run pytest --runslow`.
 
 ## License
 

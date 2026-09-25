@@ -120,6 +120,15 @@ class TestIncline:
         assert run.finish_time.item() == before[0]
         torch.testing.assert_close(run.normal_forces().detach(), before[1])
 
+    def test_results_after_the_car_changes(self):
+        c = car()
+        run = simulate(incline(), c)
+        assert torch.isfinite(run.finish_time)
+        with torch.no_grad():
+            c.mass_.fill_(0.2)
+        with pytest.raises(RuntimeError, match="simulate the car again"):
+            _ = run.finish_time
+
     def test_batched_matches_single(self):
         cg = torch.tensor([[1.0, 0.4], [0.5, 0.3]]) * INCH
         front_offset = torch.tensor([6.125, 5.0]) * INCH
@@ -317,6 +326,23 @@ class TestFullPhysics:
         # Every term takes some energy during the run (the body only pitches in the
         # curve, so its energy is back to zero at the end)
         assert all(terms[name].max() > 0 for name in terms)
+
+    def test_smooth_min_normal_force(self, track35):
+        cg = torch.tensor([[1.0, 0.4], [0.25, 0.4]]) * INCH
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", LiftOffWarning)
+            run = simulate_besttrack(track35, car(cg=cg), physics=None)
+        exact = run.min_normal_force.min(-1).values
+        n = 2 * int(run._before_finish().sum(0).max())
+        for sharpness in (100.0, 500.0, 2000.0):
+            smooth = run.smooth_min_normal_force(sharpness)
+            assert smooth.shape == (2,)
+            assert torch.all(smooth <= exact)
+            assert torch.all(smooth >= exact - math.log(n) / sharpness)
+        # It's differentiable, and moving the CG forward loads the front wheels
+        smooth = run.smooth_min_normal_force()
+        (grad,) = torch.autograd.grad(smooth.sum(), run.equations.car.cg_)
+        assert torch.all(grad[:, 0] > 0)
 
     def test_slower_than_simple(self, track35):
         simple = simulate_besttrack(track35, car())

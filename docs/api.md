@@ -20,6 +20,14 @@
 
 ::: pwdsim.simulation
 
+## Optimization
+
+::: pwdsim.optimization
+
+## Constraints
+
+::: pwdsim.constraints
+
 ## Plotting
 
 ::: pwdsim.plotting
