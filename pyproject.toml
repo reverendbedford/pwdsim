@@ -46,6 +46,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "NPY"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers"
+markers = ["slow: slow tests, skipped unless pytest is run with --runslow"]
 
 [tool.coverage.run]
 source = ["pwdsim"]
