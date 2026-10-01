@@ -2,8 +2,8 @@
 
 from importlib.metadata import version
 
-from pwdsim import constraints
-from pwdsim.car import Car, SimpleCar
+from pwdsim import constraints, geometry
+from pwdsim.car import Car, GeometricCar, SimpleCar
 from pwdsim.optimization import DesignProblem, OptimizationResult, optimize
 from pwdsim.physics import (
     AxleFriction,
@@ -36,6 +36,7 @@ __all__ = [
     "DidNotFinishWarning",
     "Drag",
     "Environment",
+    "GeometricCar",
     "Gravity",
     "LiftOffWarning",
     "OptimizationResult",
@@ -51,6 +52,7 @@ __all__ = [
     "constraints",
     "default_physics",
     "full_physics",
+    "geometry",
     "optimize",
     "ramp_track",
     "simple_physics",

@@ -12,12 +12,14 @@ nav:
   - Home: index.md
   - Track models: tracks.md
   - Cars: cars.md
+  - Car geometry: geometry.md
   - Forward simulation: simulation.md
   - Optimization: optimization.md
   - Examples:
       - Forward model: examples/forward_model.py
       - Which physics matters?: examples/physics_study.py
       - Optimizing a car: examples/optimization.py
+      - Designing a car body: examples/car_design.py
   - API reference: api.md
 
 plugins:

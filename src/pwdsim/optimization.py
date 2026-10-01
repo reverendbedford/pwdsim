@@ -32,6 +32,10 @@ BoundValue = float | Sequence[float] | torch.Tensor
 Bounds = tuple[BoundValue, BoundValue]
 """Lower and upper bounds for a design variable."""
 
+FEASIBLE = 1e-6
+"""The largest constraint violation, in the scaled units of each constraint, for a
+design to count as feasible when checking whether the optimization has stalled."""
+
 DEFAULT_OPTIONS = {
     "trust-constr": {
         "maxiter": 50,
@@ -332,10 +336,16 @@ class DesignProblem:
 
     def _record(self, x, history):
         evaluation = self.evaluate(x)
+        violation = self.violation(x)
+        best = history[-1]["best_feasible"] if history else math.inf
+        if violation <= FEASIBLE:
+            best = min(best, evaluation.objective)
         history.append(
             {
                 "iteration": len(history),
                 "objective": evaluation.objective,
+                "violation": violation,
+                "best_feasible": best,
                 "variables": {
                     v.name: v.parameter.detach().clone() for v in self.variables
                 },
@@ -400,8 +410,24 @@ class DesignProblem:
                 )
         return constraints
 
+    def violation(self, x: np.ndarray) -> float:
+        """The largest violation of any constraint at `x`, in the scaled units of
+        each constraint."""
+        evaluation = self.evaluate(x)
+        worst = 0.0
+        for c, values in zip(self.constraints, evaluation.constraints, strict=True):
+            if values.size:
+                below = np.max(c.lower / c.scale - values)
+                above = np.max(values - c.upper / c.scale)
+                worst = max(worst, below, above)
+        return float(worst)
+
     def solve(
-        self, method: str = "trust-constr", options: Mapping | None = None
+        self,
+        method: str = "trust-constr",
+        options: Mapping | None = None,
+        stall_tolerance: float | None = 0.01,
+        stall_iterations: int = 5,
     ) -> OptimizationResult:
         """Run the optimizer from the current design.
 
@@ -409,6 +435,11 @@ class DesignProblem:
             method: `"trust-constr"` (the default) or `"SLSQP"`.
             options: optimizer settings, passed to `scipy.optimize.minimize`,
                 overriding [`DEFAULT_OPTIONS`][pwdsim.optimization.DEFAULT_OPTIONS].
+            stall_tolerance: stop once the objective (the finish time in ms, by
+                default) has improved by less than this over the last
+                `stall_iterations` iterations, with the constraints satisfied.
+                `None` leaves the stopping to the optimizer's own tolerances.
+            stall_iterations: the number of iterations to look back over.
 
         Returns:
             The results.  The optimum is also written into the car.
@@ -430,8 +461,24 @@ class DesignProblem:
             self._record(x0, history)
             initial_objective = history[0]["objective"]
 
+            stalled = False
+
             def callback(x, *args):
+                nonlocal stalled
                 self._record(x, history)
+                if stall_tolerance is None or len(history) <= stall_iterations:
+                    return
+                # Compare the best feasible objective now with the best feasible
+                # objective stall_iterations ago
+                best = [h["best_feasible"] for h in history]
+                before, now = best[-(stall_iterations + 1)], best[-1]
+                if (
+                    math.isfinite(before)
+                    and before - now < stall_tolerance
+                    and history[-1]["violation"] <= FEASIBLE
+                ):
+                    stalled = True
+                    raise StopIteration
 
             kwargs = {}
             if method == "trust-constr":
@@ -453,9 +500,17 @@ class DesignProblem:
             for name, p in self.car.named_parameters():
                 p.requires_grad_(flags[name])
 
+        if stalled:
+            success = True
+            message = (
+                f"The objective improved by less than {stall_tolerance} over the "
+                f"last {stall_iterations} iterations"
+            )
+        else:
+            success, message = bool(result.success), str(result.message)
         return OptimizationResult(
-            success=bool(result.success),
-            message=str(result.message),
+            success=success,
+            message=message,
             car=self.car,
             initial_car=initial_car,
             initial={
@@ -482,6 +537,8 @@ def optimize(
     objective: Callable[[Car, Run], torch.Tensor] | None = None,
     method: str = "trust-constr",
     options: Mapping | None = None,
+    stall_tolerance: float | None = 0.01,
+    stall_iterations: int = 5,
 ) -> OptimizationResult:
     """Tune car parameters to minimize the finish time.
 
@@ -518,6 +575,13 @@ def optimize(
         options: optimizer settings passed to `scipy.optimize.minimize`, overriding
             [`DEFAULT_OPTIONS`][pwdsim.optimization.DEFAULT_OPTIONS], e.g.
             `{"maxiter": 20}`.
+        stall_tolerance: stop once the objective has improved by less than this
+            (in ms, for the default objective) over the last `stall_iterations`
+            iterations, with the constraints satisfied.  The gradients are only
+            accurate to about 1%, so the optimizer's own tolerances can be out of
+            reach for larger problems, while the finish time has long since stopped
+            improving.  `None` switches this off.
+        stall_iterations: the number of iterations to look back over.
 
     Returns:
         The results.  The optimum is also written into the car.
@@ -525,4 +589,9 @@ def optimize(
     problem = DesignProblem(
         simulation, variables, constraints, lift_off_tolerance, objective
     )
-    return problem.solve(method=method, options=options)
+    return problem.solve(
+        method=method,
+        options=options,
+        stall_tolerance=stall_tolerance,
+        stall_iterations=stall_iterations,
+    )

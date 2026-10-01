@@ -7,6 +7,8 @@ import torch
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from pwdsim import geometry
+from pwdsim.car import GeometricCar
 from pwdsim.simulation import Run, Simulation
 from pwdsim.track import Track
 from pwdsim.units import DEGREE, LENGTH_UNITS
@@ -285,4 +287,95 @@ def plot_car(
     ax.set_xlabel(f"x ({unit})")
     ax.set_ylabel(f"y ({unit})")
     ax.legend()
+    return ax.figure
+
+
+def _material_name(density):
+    names = {
+        geometry.TUNGSTEN: "tungsten",
+        geometry.LEAD: "lead",
+        geometry.VOID: "void",
+        geometry.PINE: "pine",
+        geometry.BASSWOOD: "basswood",
+    }
+    return names.get(density, f"{density:.0f} kg/m³")
+
+
+def plot_geometry(
+    car: GeometricCar, unit: str = "in", ax: Axes | None = None
+) -> Figure:
+    """Draw the side profile of a [`GeometricCar`][pwdsim.car.GeometricCar], at
+    true scale.
+
+    Shows the body, its inclusions filled by material, the wheels and axles, the
+    track under the wheels, and the center of gravity.  Inclusions shallower than
+    the body are drawn lighter.
+
+    Args:
+        car: the car to draw.
+        unit: length unit for the axes.
+        ax: optional matplotlib axes to plot into.
+
+    Returns:
+        The matplotlib figure.
+    """
+    scale = _length_scale(unit)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 3.5), constrained_layout=True)
+    profile = car.profile
+    with torch.no_grad():
+        x = torch.linspace(profile.x_rear, profile.x_front, 200, dtype=torch.float64)
+        top = profile.top(x).numpy()
+        x = x.numpy()
+        bottom = profile.bottom
+        outline_x = [x[0], *x, x[-1]]
+        outline_y = [bottom, *top, bottom]
+        ax.fill(
+            [v / scale for v in outline_x],
+            [v / scale for v in outline_y],
+            color="burlywood",
+            label=f"body ({_material_name(car.body_density.item())})",
+        )
+        labelled = set()
+        for inclusion in car.inclusions:
+            for rect in inclusion.rectangles(bottom):
+                x0, x1 = rect.x0.item() / scale, rect.x1.item() / scale
+                y0, y1 = rect.y0.item() / scale, rect.y1.item() / scale
+                depth = car.thickness if rect.depth is None else rect.depth
+                fraction = (depth / car.thickness).item()
+                name = _material_name(rect.density)
+                if rect.density == geometry.VOID:
+                    style = dict(facecolor="white", edgecolor="0.4", linestyle="--")
+                else:
+                    style = dict(facecolor="0.25", edgecolor="0.1")
+                ax.add_patch(
+                    plt.Rectangle(
+                        (x0, y0),
+                        x1 - x0,
+                        y1 - y0,
+                        alpha=0.3 + 0.7 * fraction,
+                        label=None if name in labelled else name,
+                        **style,
+                    )
+                )
+                labelled.add(name)
+        w = car.wheelbase.item()
+        for center, radius in (
+            (0.0, car.rear_wheel_radius.item()),
+            (w, car.front_wheel_radius.item()),
+        ):
+            ax.add_patch(
+                plt.Circle(
+                    (center / scale, 0.0), radius / scale, fill=False, color="tab:blue"
+                )
+            )
+            ax.plot(center / scale, 0.0, "+", color="tab:blue")
+        track = -car.rear_wheel_radius.item()
+        ax.axhline(track / scale, color="k", lw=0.8)
+        cg = car.cg.detach().numpy() / scale
+        ax.plot(*cg, "o", color="tab:red", label="CG")
+    ax.set_aspect("equal")
+    ax.set_xlabel(f"x ({unit})")
+    ax.set_ylabel(f"y ({unit})")
+    ax.legend(loc="upper right", fontsize="small")
     return ax.figure

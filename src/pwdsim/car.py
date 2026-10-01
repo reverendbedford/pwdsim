@@ -4,8 +4,9 @@ A car is a rigid body riding on a rear and a front axle.  [`Car`][pwdsim.car.Car
 defines the essential parameters the simulation needs, as read-only properties.
 Concrete car classes decide where those values come from:
 [`SimpleCar`][pwdsim.car.SimpleCar] stores each one directly as a trainable
-parameter, while more detailed models can compute them from a description of the
-car's geometry and materials.
+parameter, while [`GeometricCar`][pwdsim.car.GeometricCar] computes its mass, center
+of gravity, and moment of inertia from a description of the car's geometry and
+materials.
 
 Positions are given in the body frame, with its origin at the rear axle center, its
 first axis pointing toward the front axle center, and its second axis perpendicular
@@ -13,10 +14,12 @@ to that, pointing away from the track.  All values are in SI units.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 
 import torch
 from torch import nn
 
+from pwdsim.geometry import Inclusion, Moments, Profile
 from pwdsim.types import DTYPE, Scalar
 
 
@@ -327,3 +330,226 @@ class SimpleCar(Car):
     frontal_area = _stored("frontal_area_")
     drag_coefficient = _stored("drag_coefficient_")
     rolling_friction = _stored("rolling_friction_")
+
+
+class GeometricCar(Car):
+    """A car whose mass, center of gravity, and moment of inertia come from its
+    geometry.
+
+    The body is a [`Profile`][pwdsim.geometry.Profile] extruded through
+    `thickness` and made of a material of density `body_density`, with
+    [inclusions][pwdsim.geometry.Inclusion] of other materials replacing parts of
+    it, such as weights and voids.  The wheels are point masses at the axle centers.
+    For each quantity $q \\in \\{1, x, y, x^2 + y^2\\}$,
+
+    $$
+    \\int q\\, dm = \\rho_b t \\int_\\text{body} q\\, dA
+    + \\sum_k (\\rho_k - \\rho_b)\\, d_k \\int_{\\text{rectangle } k} q\\, dA
+    + m_w \\left(n_r q(0, 0) + n_f q(w, 0)\\right),
+    $$
+
+    which gives the mass, the center of gravity, and the pitching moment of
+    inertia about the center of gravity.  The front offset is the front of the
+    profile.  Inclusions are assumed to lie inside the body; the constraints in
+    [`pwdsim.constraints`][pwdsim.constraints] keep them there during optimization.
+
+    Any of the computed properties (`mass`, `cg`, `body_inertia`, `front_offset`)
+    can instead be given as a number, which replaces the geometric value.
+
+    The geometry's parameters can be optimized by their dotted names, e.g.
+    `"profile.heights"` or `"inclusions.0.position"`.  The other properties are
+    stored as parameters like those of [`SimpleCar`][pwdsim.car.SimpleCar].
+
+    Args:
+        profile: the side profile of the body.
+        inclusions: regions of other materials inside the body, listed from the
+            rear of the car to the front.
+        thickness: thickness of the body, across the car.
+        body_density: density of the body material, e.g.
+            [`PINE`][pwdsim.geometry.PINE].
+        wheelbase: distance between the axle centers, $w$.
+        wheel_mass: mass of each wheel, with its axle.
+        rear_wheel_inertia: moment of inertia of each rear wheel, $I_r$.
+        front_wheel_inertia: moment of inertia of each front wheel, $I_f$.
+        rear_wheel_radius: radius of the rear wheels, $r_r$.
+        front_wheel_radius: radius of the front wheels, $r_f$.
+        rear_axle_radius: radius of the rear axle, $a_r$.
+        front_axle_radius: radius of the front axle, $a_f$.
+        rear_axle_friction: rear axle friction coefficient, $\\mu_r$.
+        front_axle_friction: front axle friction coefficient, $\\mu_f$.
+        frontal_area: cross-sectional area, $A$.
+        drag_coefficient: drag coefficient, $C_d$.
+        rolling_friction: rolling friction coefficient, $c_r$.
+        n_rear_wheels: number of rear wheels on the track, $n_r$.
+        n_front_wheels: number of front wheels on the track, $n_f$.
+        mass: if given, replaces the computed mass.
+        cg: if given, replaces the computed center of gravity.
+        body_inertia: if given, replaces the computed moment of inertia.
+        front_offset: if given, replaces the front of the profile.
+    """
+
+    COMPUTED = ("mass", "cg", "body_inertia", "front_offset")
+    """The properties computed from the geometry, unless given."""
+
+    def __init__(
+        self,
+        profile: Profile,
+        inclusions: Iterable[Inclusion] = (),
+        *,
+        thickness: Scalar,
+        body_density: Scalar,
+        wheelbase: Scalar,
+        wheel_mass: Scalar,
+        rear_wheel_inertia: Scalar,
+        front_wheel_inertia: Scalar,
+        rear_wheel_radius: Scalar,
+        front_wheel_radius: Scalar,
+        rear_axle_radius: Scalar,
+        front_axle_radius: Scalar,
+        rear_axle_friction: Scalar,
+        front_axle_friction: Scalar,
+        frontal_area: Scalar,
+        drag_coefficient: Scalar,
+        rolling_friction: Scalar,
+        n_rear_wheels: int = 2,
+        n_front_wheels: int = 2,
+        mass: Scalar | None = None,
+        cg: tuple[Scalar, Scalar] | torch.Tensor | None = None,
+        body_inertia: Scalar | None = None,
+        front_offset: Scalar | None = None,
+    ):
+        super().__init__()
+        self.profile = profile
+        self.inclusions = nn.ModuleList(inclusions)
+        self.thickness_ = _parameter(thickness)
+        self.body_density_ = _parameter(body_density)
+        self.wheel_mass_ = _parameter(wheel_mass)
+        self.wheelbase_ = _parameter(wheelbase)
+        self.rear_wheel_inertia_ = _parameter(rear_wheel_inertia)
+        self.front_wheel_inertia_ = _parameter(front_wheel_inertia)
+        self.rear_wheel_radius_ = _parameter(rear_wheel_radius)
+        self.front_wheel_radius_ = _parameter(front_wheel_radius)
+        self.rear_axle_radius_ = _parameter(rear_axle_radius)
+        self.front_axle_radius_ = _parameter(front_axle_radius)
+        self.rear_axle_friction_ = _parameter(rear_axle_friction)
+        self.front_axle_friction_ = _parameter(front_axle_friction)
+        self.frontal_area_ = _parameter(frontal_area)
+        self.drag_coefficient_ = _parameter(drag_coefficient)
+        self.rolling_friction_ = _parameter(rolling_friction)
+        self._n_rear_wheels = int(n_rear_wheels)
+        self._n_front_wheels = int(n_front_wheels)
+        overrides = dict(
+            mass=mass, cg=cg, body_inertia=body_inertia, front_offset=front_offset
+        )
+        for name, value in overrides.items():
+            if value is not None:
+                setattr(self, f"{name}_", _parameter(value))
+        self.check()
+
+    @property
+    def overrides(self) -> list[str]:
+        """The computed properties that were replaced by given values."""
+        return [name for name in self.COMPUTED if hasattr(self, f"{name}_")]
+
+    def mass_moments(self) -> Moments:
+        """The mass moments of the car: $\\int dm$, $\\int x\\, dm$,
+        $\\int y\\, dm$, and $\\int (x^2 + y^2)\\, dm$, from its geometry."""
+        t, rho = self.thickness_, self.body_density_
+        body = self.profile.moments()
+        totals = {f: rho * t * getattr(body, f) for f in ("area", "x", "y", "polar")}
+        for inclusion in self.inclusions:
+            for rectangle in inclusion.rectangles(self.profile.bottom):
+                depth = t if rectangle.depth is None else rectangle.depth
+                factor = (rectangle.density - rho) * depth
+                moments = rectangle.moments()
+                for f in totals:
+                    totals[f] = totals[f] + factor * getattr(moments, f)
+        # The wheels, at the axle centers (0, 0) and (w, 0)
+        m_rear = self._n_rear_wheels * self.wheel_mass_
+        m_front = self._n_front_wheels * self.wheel_mass_
+        w = self.wheelbase_
+        totals["area"] = totals["area"] + m_rear + m_front
+        totals["x"] = totals["x"] + m_front * w
+        totals["polar"] = totals["polar"] + m_front * w**2
+        return Moments(**totals)
+
+    def _override(self, name):
+        return (
+            getattr(self, f"{name}_", None) if f"{name}_" in self._parameters else None
+        )
+
+    @property
+    def mass(self):
+        override = self._override("mass")
+        return override if override is not None else self.mass_moments().area
+
+    @property
+    def cg(self):
+        override = self._override("cg")
+        if override is not None:
+            return override
+        moments = self.mass_moments()
+        return torch.stack([moments.x, moments.y]) / moments.area
+
+    @property
+    def body_inertia(self):
+        override = self._override("body_inertia")
+        if override is not None:
+            return override
+        moments = self.mass_moments()
+        cg = torch.stack([moments.x, moments.y]) / moments.area
+        return moments.polar - moments.area * torch.sum(cg**2)
+
+    @property
+    def front_offset(self):
+        override = self._override("front_offset")
+        if override is not None:
+            return override
+        return torch.as_tensor(self.profile.x_front, dtype=DTYPE)
+
+    thickness = _stored("thickness_")
+    body_density = _stored("body_density_")
+    wheel_mass = _stored("wheel_mass_")
+    wheelbase = _stored("wheelbase_")
+    n_rear_wheels = _stored("_n_rear_wheels")
+    n_front_wheels = _stored("_n_front_wheels")
+    rear_wheel_inertia = _stored("rear_wheel_inertia_")
+    front_wheel_inertia = _stored("front_wheel_inertia_")
+    rear_wheel_radius = _stored("rear_wheel_radius_")
+    front_wheel_radius = _stored("front_wheel_radius_")
+    rear_axle_radius = _stored("rear_axle_radius_")
+    front_axle_radius = _stored("front_axle_radius_")
+    rear_axle_friction = _stored("rear_axle_friction_")
+    front_axle_friction = _stored("front_axle_friction_")
+    frontal_area = _stored("frontal_area_")
+    drag_coefficient = _stored("drag_coefficient_")
+    rolling_friction = _stored("rolling_friction_")
+
+    def check(self):
+        """Check the car properties and the geometry.
+
+        Raises:
+            ValueError: if any property is out of range.
+        """
+        if self.batch_shape != ():
+            raise ValueError("A GeometricCar describes a single car, not a batch")
+        for name in ("thickness", "body_density", "wheel_mass"):
+            if not torch.all(getattr(self, name) > 0):
+                raise ValueError(f"{name} must be positive")
+        if not torch.all(self.profile.heights.detach() >= 0):
+            raise ValueError("The profile heights must be nonnegative")
+        for inclusion in self.inclusions:
+            if (
+                inclusion.depth is not None
+                and not 0 < inclusion.depth <= self.thickness
+            ):
+                raise ValueError("Inclusions must be no deeper than the body")
+            for rectangle in inclusion.rectangles(self.profile.bottom):
+                if not (
+                    self.profile.x_rear
+                    <= rectangle.x0
+                    < rectangle.x1
+                    <= self.profile.x_front
+                ):
+                    raise ValueError("Inclusions must lie within the block length")
+        super().check()

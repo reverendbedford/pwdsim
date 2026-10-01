@@ -31,9 +31,13 @@ pwdsim is in early development.  What works now:
   within bounds and constraints such as the race rules.  A constraint keeping the
   wheels on the track is on by default.  It uses SciPy's `trust-constr` method with
   gradients from the adjoint method.
-- **Visualization**: plots of the track, the car on the track, and its run.
+- **Car geometry**: cars described by a B-spline body profile and the weights and
+  pockets in it, with the mass, center of gravity, and moment of inertia computed
+  from the geometry, so the optimizer can shape the body and place the weights.
+- **Visualization**: plots of the track, the car on the track, its geometry, and
+  its run.
 
-Next up: cars described by their shape.
+Next up: computing the drag from the shape of the car.
 
 ## Quick start
 
@@ -81,7 +85,8 @@ complete simulation, and the [which physics matters?](docs/examples/physics_stud
 example compares the effects of the different pieces of physics and ranks the car
 parameters by their effect on the finish time, and the
 [optimizing a car](docs/examples/optimization.py) example tunes a car's center of
-gravity and mass.  The docs (`uv run mkdocs serve`)
+gravity and mass, and the [designing a car body](docs/examples/car_design.py)
+example optimizes the shape of a car and the size and position of its weight.  The docs (`uv run mkdocs serve`)
 describe the model in detail.
 
 ## Model overview

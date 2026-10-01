@@ -16,7 +16,9 @@ pwdsim simulates, visualizes, and optimizes pinewood derby cars:
     model: gravity, the translation and pitching of the car, the spin of its
     wheels, aerodynamic drag, and axle and rolling friction, with gradients from the
     adjoint method.  The optimizer tunes car parameters within bounds, race rules,
-    and a no-lift-off constraint.  Cars described by their shape are next.
+    and a no-lift-off constraint.  Cars can be described by their shape and
+    weights, with the mass, center of gravity, and inertia computed from the
+    geometry; computing the drag from the shape is next.
 
 ## Quick start
 
@@ -66,7 +68,8 @@ and comparing a batch of designs.  The
 terms on and off to show which aspects of a car's physics, and which of its
 parameters, matter most for its speed.  The
 [optimizing a car](examples/optimization.py) example tunes the center of gravity
-and mass of a car.
+and mass of a car, and the [designing a car body](examples/car_design.py) example
+optimizes the shape of a car body and the size and position of its weight.
 
 ## The model in brief
 
@@ -102,6 +105,8 @@ The model is documented piece by piece:
   classes that provide them.
 - [Forward simulation](simulation.md): how the equation of motion is assembled
   from modular physics terms and integrated in time, and the results of a run.
+- [Car geometry](geometry.md): cars described by the shape of their body and the
+  weights in it.
 - [Optimization](optimization.md): tuning car parameters within bounds and
   constraints.
 

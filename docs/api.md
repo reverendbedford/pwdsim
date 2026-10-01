@@ -8,6 +8,10 @@
 
 ::: pwdsim.car
 
+## Geometry
+
+::: pwdsim.geometry
+
 ## Kinematics
 
 ::: pwdsim.kinematics

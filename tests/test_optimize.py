@@ -223,6 +223,20 @@ class TestOptimize:
             4.5 * OUNCE, rel=1e-3
         )
 
+    def test_stall(self, track35):
+        c = car()
+        result = pwdsim.optimize(
+            simulation(track35, c),
+            {"cg": CG_ALONG},
+            stall_tolerance=1e3,
+            stall_iterations=2,
+            options={"gtol": 1e-12, "xtol": 1e-12},
+        )
+        # Every iteration improves by less than a second, so it stops right away
+        assert result.success
+        assert "improved by less than" in result.message
+        assert len(result.history) == 3
+
     def test_unknown_method(self, track35):
         with pytest.raises(ValueError, match="method"):
             pwdsim.optimize(simulation(track35, car()), ["mass"], method="genetic")

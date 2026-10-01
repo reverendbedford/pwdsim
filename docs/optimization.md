@@ -169,3 +169,17 @@ The tolerances are modest because the gradients are only accurate to about 1% (s
 [Forward simulation](simulation.md#time-integration)).  For the same reason, use a
 time step of 0.2 ms or less: coarser steps give noisy gradients, which confuse the
 optimizer.
+
+### Stopping
+
+With more than a few variables, the noise in the gradients can keep the optimizer
+from meeting `gtol`, long after the finish time has stopped improving.  So
+`optimize` also stops once the finish time of the feasible designs has improved by
+less than `stall_tolerance` (0.01 ms by default) over the last `stall_iterations`
+(5) iterations.  Pass `stall_tolerance=None` to leave the stopping to the
+optimizer's own tolerances.
+
+An interior point method can also spend many iterations creeping toward bounds that
+many variables end up on, gaining a few hundredths of a millisecond each time.  If
+that isn't worth the time, cap the iterations with `options={"maxiter": ...}`, as
+the [designing a car body](examples/car_design.py) example does.

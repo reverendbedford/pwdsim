@@ -160,6 +160,13 @@ car.cg_.requires_grad_(True)  # only optimize the center of gravity
 `SimpleCar` doesn't enforce any bounds while optimizing.  The optimization routines
 will be responsible for keeping the parameters physical and within the race rules.
 
+### `GeometricCar`
+
+[`GeometricCar`][pwdsim.car.GeometricCar] computes the mass, center of gravity,
+moment of inertia, and front offset from a description of the car body: a B-spline
+side profile cut from the block, and weights and pockets inside it.  Any of those
+can be given as a number instead.  See [Car geometry](geometry.md).
+
 ### Writing a new car class
 
 To describe a car in another way, subclass `Car`, store the fundamental parameters,
