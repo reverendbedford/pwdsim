@@ -11,14 +11,12 @@ pwdsim simulates, visualizes, and optimizes pinewood derby cars:
   can tune the car design within the constraints of the race rules.
 - **Visualization**: plot the track, the car, and its run.
 
-!!! note "Status"
-    Early development.  The forward simulation works, with the full physics of the
-    model: gravity, the translation and pitching of the car, the spin of its
-    wheels, aerodynamic drag, and axle and rolling friction, with gradients from the
-    adjoint method.  The optimizer tunes car parameters within bounds, race rules,
-    and a no-lift-off constraint.  Cars can be described by their shape and
-    weights, with the mass, center of gravity, inertia, and drag computed from the
-    geometry.
+The simulation covers gravity, the translation and pitching of the car, the spin of
+its wheels, aerodynamic drag, and axle and rolling friction, with gradients of the
+results from the adjoint method.  The optimizer tunes car parameters within bounds,
+race rules, and a no-lift-off constraint.  Cars can be described directly by their
+properties, or by the shape of their body and the weights in it, with the mass,
+center of gravity, inertia, and drag computed from the geometry.
 
 ## Quick start
 

@@ -13,9 +13,7 @@ The simulator is written in pytorch, so automatic differentiation gives paramete
 sensitivities directly and torch optimizers can tune the car design. Most users will
 work with pwdsim from Jupyter notebooks.
 
-## Status
-
-pwdsim is in early development.  What works now:
+## Features
 
 - **Tracks**: smooth spline tracks built from straights, circular arcs, and
   easements, including a model of the common BestTrack aluminum track.
@@ -38,9 +36,8 @@ pwdsim is in early development.  What works now:
 - **Visualization**: plots of the track, the car on the track, its geometry, and
   its run.
 
-The main features are all in place.  Possible next steps include modeling the cars
-swerving in the track and rail riding, and calibrating the drag model against
-measurements.
+Possible future additions include modeling the cars swerving in the track and rail
+riding, and calibrating the drag model against measurements.
 
 ## Quick start
 
@@ -172,6 +169,12 @@ uv run pre-commit run --all-files      # run all hooks
 uv run mkdocs serve                    # preview the docs locally
 uv run mkdocs build --strict           # build the docs
 ```
+
+### Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and push to
+`main`, with three jobs: **Pre-commit hooks** (every hook, on all files),
+**Tests** (`pytest --cov`), and **Example notebooks** (the slow notebook tests).
 
 ### Example notebooks
 
