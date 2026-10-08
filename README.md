@@ -32,12 +32,15 @@ pwdsim is in early development.  What works now:
   wheels on the track is on by default.  It uses SciPy's `trust-constr` method with
   gradients from the adjoint method.
 - **Car geometry**: cars described by a B-spline body profile and the weights and
-  pockets in it, with the mass, center of gravity, and moment of inertia computed
-  from the geometry, so the optimizer can shape the body and place the weights.
+  pockets in it, with the mass, center of gravity, moment of inertia, and drag
+  computed from the geometry, so the optimizer can shape the body and place the
+  weights.
 - **Visualization**: plots of the track, the car on the track, its geometry, and
   its run.
 
-Next up: computing the drag from the shape of the car.
+The main features are all in place.  Possible next steps include modeling the cars
+swerving in the track and rail riding, and calibrating the drag model against
+measurements.
 
 ## Quick start
 

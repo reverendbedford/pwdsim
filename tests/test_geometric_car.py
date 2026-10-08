@@ -185,7 +185,7 @@ class TestMassProperties:
 
     def test_overrides(self):
         car = make_car(mass=0.14, cg=(0.02, 0.01))
-        assert car.overrides == ["mass", "cg"]
+        assert car.overrides == ["mass", "cg", "frontal_area", "drag_coefficient"]
         assert car.mass.item() == pytest.approx(0.14)
         torch.testing.assert_close(
             car.cg.detach(), torch.tensor([0.02, 0.01], dtype=torch.float64)

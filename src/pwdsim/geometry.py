@@ -67,12 +67,19 @@ class BSpline:
         self.knots = _tensor(np.concatenate([[x0] * degree, interior, [x1] * degree]))
         self.breaks = _tensor(interior)
 
-    def basis(self, x) -> torch.Tensor:
-        """The basis functions $N_i(x)$, in a trailing dimension of size `n`.
+    def basis(self, x: float | torch.Tensor, derivative: int = 0) -> torch.Tensor:
+        """The basis functions $N_i(x)$, or their first derivatives $N_i'(x)$, in a
+        trailing dimension of size `n`.
 
         Points outside $[x_0, x_1]$ are clamped to the interval.  The basis is
         differentiable with respect to `x`.
+
+        Args:
+            x: the points to evaluate at.
+            derivative: 0 for the basis functions, 1 for their derivatives.
         """
+        if derivative not in (0, 1):
+            raise ValueError("Only the basis and its first derivative are available")
         x = torch.clamp(_tensor(x), self.x0, self.x1)[..., None]
         t = self.knots
         # Degree 0: indicator of the span, with the last span closed on the right
@@ -83,10 +90,16 @@ class BSpline:
             count = len(t) - p - 1
             ti, tip = t[:count], t[p : p + count]
             ti1, tip1 = t[1 : count + 1], t[p + 1 : p + 1 + count]
-            a = torch.where(tip > ti, (x - ti) / torch.where(tip > ti, tip - ti, 1), 0)
-            b = torch.where(
-                tip1 > ti1, (tip1 - x) / torch.where(tip1 > ti1, tip1 - ti1, 1), 0
-            )
+            left_span = torch.where(tip > ti, tip - ti, 1)
+            right_span = torch.where(tip1 > ti1, tip1 - ti1, 1)
+            if derivative and p == self.degree:
+                # N'_{i,p} = p (N_{i,p-1} / (t_{i+p} - t_i)
+                #             - N_{i+1,p-1} / (t_{i+p+1} - t_{i+1}))
+                a = torch.where(tip > ti, p / left_span, 0)
+                b = torch.where(tip1 > ti1, -p / right_span, 0)
+            else:
+                a = torch.where(tip > ti, (x - ti) / left_span, 0)
+                b = torch.where(tip1 > ti1, (tip1 - x) / right_span, 0)
             N = a * N[..., :count] + b * N[..., 1 : count + 1]
         return N
 
@@ -188,6 +201,20 @@ class Profile(nn.Module):
     def height(self, x) -> torch.Tensor:
         """The height of the profile above the bottom, $h(x)$."""
         return self.spline.basis(x) @ self.heights
+
+    def slope(self, x) -> torch.Tensor:
+        """The slope of the profile, $h'(x)$."""
+        return self.spline.basis(x, derivative=1) @ self.heights
+
+    def samples(self, points: int = 16) -> tuple[torch.Tensor, ...]:
+        """Gauss-Legendre points along the profile, for integrating functions of the
+        height and slope that aren't polynomials.
+
+        Returns:
+            The points $x$, their weights, and the height $h$ and slope $h'$ there.
+        """
+        x, w = self.spline.quadrature(points)
+        return x, w, self.height(x), self.slope(x)
 
     def top(self, x) -> torch.Tensor:
         """The $y$ coordinate of the top of the profile, $y_b + h(x)$."""

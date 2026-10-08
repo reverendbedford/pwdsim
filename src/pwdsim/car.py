@@ -19,6 +19,7 @@ from collections.abc import Iterable
 import torch
 from torch import nn
 
+from pwdsim.aerodynamics import DragModel
 from pwdsim.geometry import Inclusion, Moments, Profile
 from pwdsim.types import DTYPE, Scalar
 
@@ -353,8 +354,12 @@ class GeometricCar(Car):
     profile.  Inclusions are assumed to lie inside the body; the constraints in
     [`pwdsim.constraints`][pwdsim.constraints] keep them there during optimization.
 
-    Any of the computed properties (`mass`, `cg`, `body_inertia`, `front_offset`)
-    can instead be given as a number, which replaces the geometric value.
+    The frontal area and drag coefficient come from the profile too, through a
+    [`DragModel`][pwdsim.aerodynamics.DragModel].
+
+    Any of the computed properties (`mass`, `cg`, `body_inertia`, `front_offset`,
+    `frontal_area`, `drag_coefficient`) can instead be given as a number, which
+    replaces the geometric value.
 
     The geometry's parameters can be optimized by their dotted names, e.g.
     `"profile.heights"` or `"inclusions.0.position"`.  The other properties are
@@ -377,18 +382,26 @@ class GeometricCar(Car):
         front_axle_radius: radius of the front axle, $a_f$.
         rear_axle_friction: rear axle friction coefficient, $\\mu_r$.
         front_axle_friction: front axle friction coefficient, $\\mu_f$.
-        frontal_area: cross-sectional area, $A$.
-        drag_coefficient: drag coefficient, $C_d$.
         rolling_friction: rolling friction coefficient, $c_r$.
         n_rear_wheels: number of rear wheels on the track, $n_r$.
         n_front_wheels: number of front wheels on the track, $n_f$.
+        drag_model: the model for the drag of the body and wheels.
         mass: if given, replaces the computed mass.
         cg: if given, replaces the computed center of gravity.
         body_inertia: if given, replaces the computed moment of inertia.
         front_offset: if given, replaces the front of the profile.
+        frontal_area: if given, replaces the computed frontal area, $A$.
+        drag_coefficient: if given, replaces the computed drag coefficient, $C_d$.
     """
 
-    COMPUTED = ("mass", "cg", "body_inertia", "front_offset")
+    COMPUTED = (
+        "mass",
+        "cg",
+        "body_inertia",
+        "front_offset",
+        "frontal_area",
+        "drag_coefficient",
+    )
     """The properties computed from the geometry, unless given."""
 
     def __init__(
@@ -408,15 +421,16 @@ class GeometricCar(Car):
         front_axle_radius: Scalar,
         rear_axle_friction: Scalar,
         front_axle_friction: Scalar,
-        frontal_area: Scalar,
-        drag_coefficient: Scalar,
         rolling_friction: Scalar,
         n_rear_wheels: int = 2,
         n_front_wheels: int = 2,
+        drag_model: DragModel | None = None,
         mass: Scalar | None = None,
         cg: tuple[Scalar, Scalar] | torch.Tensor | None = None,
         body_inertia: Scalar | None = None,
         front_offset: Scalar | None = None,
+        frontal_area: Scalar | None = None,
+        drag_coefficient: Scalar | None = None,
     ):
         super().__init__()
         self.profile = profile
@@ -433,13 +447,17 @@ class GeometricCar(Car):
         self.front_axle_radius_ = _parameter(front_axle_radius)
         self.rear_axle_friction_ = _parameter(rear_axle_friction)
         self.front_axle_friction_ = _parameter(front_axle_friction)
-        self.frontal_area_ = _parameter(frontal_area)
-        self.drag_coefficient_ = _parameter(drag_coefficient)
         self.rolling_friction_ = _parameter(rolling_friction)
         self._n_rear_wheels = int(n_rear_wheels)
         self._n_front_wheels = int(n_front_wheels)
+        self.drag_model = DragModel() if drag_model is None else drag_model
         overrides = dict(
-            mass=mass, cg=cg, body_inertia=body_inertia, front_offset=front_offset
+            mass=mass,
+            cg=cg,
+            body_inertia=body_inertia,
+            front_offset=front_offset,
+            frontal_area=frontal_area,
+            drag_coefficient=drag_coefficient,
         )
         for name, value in overrides.items():
             if value is not None:
@@ -507,6 +525,34 @@ class GeometricCar(Car):
             return override
         return torch.as_tensor(self.profile.x_front, dtype=DTYPE)
 
+    def drag_breakdown(self) -> dict[str, torch.Tensor]:
+        """The drag of the body and wheels from the
+        [`DragModel`][pwdsim.aerodynamics.DragModel], broken down by component.
+
+        Computed from the geometry even where `frontal_area` or `drag_coefficient`
+        are given as numbers.
+        """
+        return self.drag_model.breakdown(
+            self.profile,
+            self.thickness_,
+            (self.rear_wheel_radius_, self.front_wheel_radius_),
+            (self._n_rear_wheels, self._n_front_wheels),
+        )
+
+    @property
+    def frontal_area(self):
+        override = self._override("frontal_area")
+        if override is not None:
+            return override
+        return self.drag_breakdown()["frontal_area"]
+
+    @property
+    def drag_coefficient(self):
+        override = self._override("drag_coefficient")
+        if override is not None:
+            return override
+        return self.drag_breakdown()["drag_coefficient"]
+
     thickness = _stored("thickness_")
     body_density = _stored("body_density_")
     wheel_mass = _stored("wheel_mass_")
@@ -521,8 +567,6 @@ class GeometricCar(Car):
     front_axle_radius = _stored("front_axle_radius_")
     rear_axle_friction = _stored("rear_axle_friction_")
     front_axle_friction = _stored("front_axle_friction_")
-    frontal_area = _stored("frontal_area_")
-    drag_coefficient = _stored("drag_coefficient_")
     rolling_friction = _stored("rolling_friction_")
 
     def check(self):

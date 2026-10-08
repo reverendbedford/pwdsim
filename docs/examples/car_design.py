@@ -22,8 +22,8 @@
 # A `GeometricCar` works the same way.  Its body is a side profile, cut from the
 # block and extruded through the block's thickness, and it can hold inclusions of
 # other materials, like a tungsten weight in a pocket.  The mass, center of
-# gravity, and moment of inertia all come from the geometry, so the optimizer can
-# tune the shape of the car and the placement of its weight directly.
+# gravity, moment of inertia, and drag all come from the geometry, so the optimizer
+# can tune the shape of the car and the placement of its weight directly.
 
 # %%
 import copy
@@ -86,18 +86,25 @@ car_args = dict(
     front_axle_radius=0.087 / 2 * INCH,
     rear_axle_friction=0.1,
     front_axle_friction=0.1,
-    frontal_area=0.0014,
-    drag_coefficient=0.4,
     rolling_friction=0.002,
 )
 car = pwdsim.GeometricCar(profile, [weight], **car_args)
 
 
 def properties(car):
-    print(f"Mass:             {car.mass.item() / OUNCE:.3f} oz")
+    print(f"Mass:              {car.mass.item() / OUNCE:.3f} oz")
     cg = car.cg.detach() / INCH
     print(f"Center of gravity: ({cg[0]:.3f}, {cg[1]:.3f}) in")
-    print(f"Pitch inertia:    {car.body_inertia.item():.3e} kg m²")
+    print(f"Pitch inertia:     {car.body_inertia.item():.3e} kg m²")
+    print(f"Frontal area:      {car.frontal_area.item() / INCH**2:.3f} in²")
+    print(f"Drag coefficient:  {car.drag_coefficient.item():.3f}")
+
+
+def drag(car):
+    """The drag areas of the components, in in²."""
+    breakdown = car.drag_breakdown()
+    for name in ("friction", "forebody", "base", "wheels", "total"):
+        print(f"{name:>9}: {breakdown[name].item() / INCH**2:.3f} in²")
 
 
 properties(car)
@@ -109,16 +116,32 @@ plt.show()
 # gravity well forward, about 2.3 in ahead of the rear axle: most of the mass is
 # still the wood.
 #
+# ## Drag from the shape
+#
+# The drag comes from a semi-empirical model of the body and wheels (see the
+# [car geometry docs](../../geometry/#drag-from-the-geometry)).  It adds up the drag
+# areas $C_d A$ of the skin friction on the body, the pressure on its blunt front
+# face and steep forward-facing slopes, the suction behind its rear face, and the
+# wheels.  The uncut block is a bluff body: most of its drag comes from the flat
+# front face.
+
+# %%
+drag(car)
+#
 # ## Mixing in numbers
 #
 # Any of the computed properties can be replaced by a number.  That's useful for
 # checking the geometry against a measured car, or for holding one property fixed
-# while the geometry sets the others.  Here the mass is given, while the center of
-# gravity and inertia still come from the geometry:
+# while the geometry sets the others.  Here the mass and drag coefficient are given,
+# while everything else still comes from the geometry:
 
 # %%
 weighed = pwdsim.GeometricCar(
-    copy.deepcopy(profile), [copy.deepcopy(weight)], **car_args, mass=5 * OUNCE
+    copy.deepcopy(profile),
+    [copy.deepcopy(weight)],
+    **car_args,
+    mass=5 * OUNCE,
+    drag_coefficient=0.4,
 )
 print("Given:", weighed.overrides)
 properties(weighed)
@@ -197,6 +220,8 @@ plot_geometry(car, ax=ax_after)
 ax_after.set_title("Optimized design")
 plt.show()
 properties(car)
+print()
+drag(car)
 
 # %%
 fig, ax = plt.subplots(figsize=(8, 3.5), constrained_layout=True)
@@ -216,23 +241,26 @@ plt.show()
 # %% [markdown]
 # ## What the optimizer did
 #
-# The optimized car is about 45 ms faster.  The aerodynamics don't depend on the
-# shape yet (the drag coefficient and frontal area are fixed numbers), so the shape
-# of the body only matters through where its mass is.  The optimizer:
+# The optimized car is about 90 ms faster.  Its shape now matters twice over:
+# through where its mass is, and through its drag.  The optimizer:
 #
-# - **carves the front of the body down** to the 0.25 in minimum, and keeps the
-#   rear at full height: wood at the front holds the center of gravity forward,
-#   while wood at the rear helps move it back;
-# - **fills the pocket with tungsten**, with no void left, sized to bring the car up
-#   to exactly 5 oz;
-# - **pushes the weight back against the rear axle slot**, as far as
-#   `regions_avoid_axles` allows.
+# - **shapes the body into a long, gentle wedge**, from nearly full height at the
+#   rear down to the 0.25 in minimum at the nose.  The low nose shrinks the blunt
+#   front face, which dominated the drag of the uncut block, and the slope stays
+#   gentle enough for the flow to stay attached: steep slopes would count as blunt
+#   too.  The drag area falls by almost half, and the drag coefficient from about
+#   1.2 to 0.7;
+# - **keeps wood at the rear**, which helps move the center of gravity back, but
+#   rounds off the top of the rear face a little, trading a little base drag;
+# - **moves the tungsten to the very back of the block** and fills the pocket with
+#   it, sized to bring the car up to exactly 5 oz.
 #
-# The center of gravity ends up about 0.44 in ahead of the rear axle, where the
-# lift-off constraint is active: as the car comes out of the curve, the normal force
-# on its front wheels (dashed) just touches zero.  The summary lists the
-# constraints: `max_mass`, `lift_off`, and `regions_avoid_axles` are active, with
-# values at their limits.
+# The summary shows which constraints are active: `max_mass`, and
+# `regions_inside_body` (the weight is against the back of the block).  The
+# center of gravity ends up about 0.6 in ahead of the rear axle, close to, but not
+# at, the lift-off limit.
 #
-# Once the drag depends on the shape of the body, the shape will matter for more
-# than its mass, and the optimizer will have to trade the two off.
+# The wheels now make up almost half of the remaining drag, and the shape of the
+# body can't change that.  The drag model is semi-empirical, so treat the exact
+# numbers with some caution, but the trends (a low nose, gentle slopes, and weight
+# at the back) match what fast derby cars look like.

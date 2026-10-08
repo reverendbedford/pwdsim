@@ -129,9 +129,78 @@ car.overrides  # ["mass"]
 ```
 
 This is useful for checking the geometry against a measured car, or for holding a
-property fixed.  The drag coefficient and frontal area are plain numbers for now.
-A later version will compute them from the shape too, with the same option to
-override them.
+property fixed.  The frontal area and drag coefficient can be given the same way.
+
+## Drag from the geometry
+
+The frontal area and drag coefficient also come from the profile, through a
+[`DragModel`][pwdsim.aerodynamics.DragModel].
+
+### Why not a panel method?
+
+A derby car is a blunt body, a little wider than it is tall, running close to the
+track at a Reynolds number of about $5 \times 10^4$.
+- **Panel methods give no drag.**  They compute inviscid potential flow, and a body
+  in steady inviscid flow has no drag (d'Alembert's paradox).
+- **Adding a boundary layer doesn't rescue them here.**  Coupling a boundary layer
+  calculation to the panels, as XFOIL does for airfoils, gives friction and some
+  pressure drag.  But it breaks down behind the car's blunt rear face, where the
+  flow separates massively.
+- **The car is 3D anyway.**  Neither approach captures the flow around the sides of
+  the car or the track floor.
+
+### The component buildup
+
+pwdsim instead estimates the drag with a semi-empirical *component buildup*, in
+the style of Hoerner's *Fluid-Dynamic Drag*.  It is fast, differentiable, and
+captures the main trends.  The drag area $C_d A$ is the sum of four parts, for a
+profile with height $h(x)$, length $L$, and thickness $t$:
+
+| Component | Drag area | Default coefficients |
+| --- | --- | --- |
+| Skin friction | $C_f S_\text{wet}$, with $S_\text{wet} = 2\int h\, dx + t\int\sqrt{1 + h'^2}\, dx + tL$ | laminar $C_f = 1.328/\sqrt{\mathrm{Re}}$ at a reference speed of 4.5 m/s |
+| Forebody pressure | $t\,(C_\text{face} H_\text{blunt} + C_\text{ramp} H_\text{ramp})$ | $C_\text{face} = 0.8$, $C_\text{ramp} = 0.1$ |
+| Base | $C_{D,b} A_b$, with $C_{D,b} = 0.029/\sqrt{C_{D,f}}$ | Hoerner's base drag correlation |
+| Wheels | $C_\text{wheel} \times 2r \times b$ for each wheel, the rear ones scaled for the front wheels' wake | $C_\text{wheel} = 0.6$, $b = 0.3$ in, rear factor 0.5 |
+
+The pieces in turn:
+
+- **The forebody.**  The front face of height $h(x_f)$ is blunt, and so are
+  forward-facing slopes steeper than 25°, where the flow separates.  Slopes
+  gentler than 10° are ramps, which the flow follows, so they add far less drag.
+  The two blend smoothly in between.
+- **The base.**  The base area $A_b$ is the rear face plus any rear-facing slopes
+  steeper than 25°.  A gently tapering tail stays attached and adds only friction.
+  Hoerner's correlation ties the base drag to the forebody drag $C_{D,f}$ (friction
+  plus pressure, on the base area): a cleaner forebody leaves a stronger suction
+  behind the base.
+- **The wheels** stick out beside the body, so they are treated as exposed, rotating
+  wheels in ground contact, with drag coefficients measured for car wheels.  The
+  rear wheels run in the wake of the front wheels, which reduces their drag, as for
+  bodies in tandem.  The reduction factor is an estimate.
+
+The frontal area is $A = t\, H_\text{max}$, with a smooth maximum of the height, and
+the drag coefficient is $C_d = C_dA / A$.
+
+[`GeometricCar.drag_breakdown`][pwdsim.car.GeometricCar.drag_breakdown] reports the
+four components.  For an uncut BSA block, the body's drag coefficient is about
+0.93, mostly from the blunt front face.  The wheels add about 0.3 more.  A wedge
+with a low nose comes in well under that.
+
+!!! warning "Limitations"
+    The model is semi-empirical, and aims for the right trends with plausible
+    magnitudes.
+    - It treats the car as its side profile, ignoring the weight pockets, the flow
+      around the sides of the body, and the effects of the track floor and guide
+      rail.
+    - It uses a single reference speed for the Reynolds number, rather than the
+      speed at each moment of the run.
+    - The wheel drag comes from data for full-size car wheels, at much higher
+      Reynolds numbers.
+
+    Every coefficient is an attribute of the `DragModel`, so it can be changed, for
+    example to match a measured car.  Pass the model to the car with
+    `GeometricCar(..., drag_model=DragModel(face=0.6))`.
 
 ## Optimizing the geometry
 

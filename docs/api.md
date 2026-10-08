@@ -12,6 +12,10 @@
 
 ::: pwdsim.geometry
 
+## Aerodynamics
+
+::: pwdsim.aerodynamics
+
 ## Kinematics
 
 ::: pwdsim.kinematics
