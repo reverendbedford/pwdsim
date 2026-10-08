@@ -13,6 +13,9 @@ The simulator is written in pytorch, so automatic differentiation gives paramete
 sensitivities directly and torch optimizers can tune the car design. Most users will
 work with pwdsim from Jupyter notebooks.
 
+**Documentation:** <https://reverendbedford.github.io/pwdsim/>, with the model in
+detail, the API reference, and the example notebooks with their results.
+
 ## Features
 
 - **Tracks**: smooth spline tracks built from straights, circular arcs, and
@@ -86,8 +89,8 @@ example compares the effects of the different pieces of physics and ranks the ca
 parameters by their effect on the finish time, and the
 [optimizing a car](docs/examples/optimization.py) example tunes a car's center of
 gravity and mass, and the [designing a car body](docs/examples/car_design.py)
-example optimizes the shape of a car and the size and position of its weight.  The docs (`uv run mkdocs serve`)
-describe the model in detail.
+example optimizes the shape of a car and the size and position of its weight.  The
+[docs](https://reverendbedford.github.io/pwdsim/) describe the model in detail.
 
 ## Model overview
 
