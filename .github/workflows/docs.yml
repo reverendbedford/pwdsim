@@ -1,0 +1,51 @@
+name: Docs
+
+# Builds the docs and publishes them to the gh-pages branch: the main branch's docs at
+# the root of the site, and a preview of each pull request's docs under pr-preview/,
+# with a comment on the pull request linking to it.  The preview is removed when the
+# pull request closes.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        if: github.event.action != 'closed'
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+        if: github.event.action != 'closed'
+      - run: uv run mkdocs build --strict
+        if: github.event.action != 'closed'
+
+      - name: Deploy the main docs
+        if: github.event_name == 'push'
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: site
+          branch: gh-pages
+          clean-exclude: pr-preview/
+
+      # Pull requests from forks can't write to the repository, so get no preview
+      - name: Deploy the pull request preview
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: site

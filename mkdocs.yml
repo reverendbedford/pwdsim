@@ -1,6 +1,8 @@
 site_name: pwdsim
 site_description: A pytorch Pinewood Derby simulator and optimizer
-repo_name: pwdsim
+site_url: https://reverendbedford.github.io/pwdsim/
+repo_name: reverendbedford/pwdsim
+repo_url: https://github.com/reverendbedford/pwdsim
 
 theme:
   name: material

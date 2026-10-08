@@ -176,6 +176,11 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and push 
 `main`, with three jobs: **Pre-commit hooks** (every hook, on all files),
 **Tests** (`pytest --cov`), and **Example notebooks** (the slow notebook tests).
 
+The docs workflow (`.github/workflows/docs.yml`) builds the docs and publishes them
+to GitHub Pages, at <https://reverendbedford.github.io/pwdsim/>, whenever `main`
+changes.  Each pull request gets a preview of its docs, linked from a comment on the
+pull request and removed when it closes.
+
 ### Example notebooks
 
 The example notebooks in `docs/examples/` are stored as
