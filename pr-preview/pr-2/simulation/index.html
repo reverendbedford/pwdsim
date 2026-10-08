@@ -1,0 +1,1369 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A pytorch Pinewood Derby simulator and optimizer">
+      
+      
+      
+        <link rel="canonical" href="https://reverendbedford.github.io/pwdsim/simulation/">
+      
+      
+        <link rel="prev" href="../geometry/">
+      
+      
+        <link rel="next" href="../optimization/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Forward simulation - pwdsim</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#forward-simulation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="pwdsim" class="md-header__button md-logo" aria-label="pwdsim" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            pwdsim
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Forward simulation
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/reverendbedford/pwdsim" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    reverendbedford/pwdsim
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="pwdsim" class="md-nav__button md-logo" aria-label="pwdsim" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    pwdsim
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/reverendbedford/pwdsim" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    reverendbedford/pwdsim
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Track models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cars/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../geometry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Car geometry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Forward simulation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Forward simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#running-a-simulation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running a simulation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coordinates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coordinates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#equation-of-motion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Equation of motion
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Equation of motion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#physics-terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Physics terms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rolling-wheels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rolling wheels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#normal-forces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Normal forces
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#friction-and-the-normal-forces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Friction and the normal forces
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#time-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time integration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Time integration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gradients" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gradients
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batches-of-cars" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batches of cars
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Results
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../optimization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/forward_model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Forward model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/physics_study/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which physics matters?
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/optimization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Optimizing a car
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/car_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Designing a car body
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#running-a-simulation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running a simulation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coordinates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coordinates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#equation-of-motion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Equation of motion
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Equation of motion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#physics-terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Physics terms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rolling-wheels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rolling wheels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#normal-forces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Normal forces
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#friction-and-the-normal-forces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Friction and the normal forces
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#time-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time integration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Time integration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gradients" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gradients
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batches-of-cars" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batches of cars
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Results
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="forward-simulation">Forward simulation<a class="headerlink" href="#forward-simulation" title="Permanent link">&para;</a></h1>
+<p>The forward simulation runs a <a href="../cars/">car</a> down a <a href="../tracks/">track</a> and reports
+how long it takes to reach the finish line, along with its speed, the forces on its
+wheels, and the gradients of the results with respect to the car parameters.  This
+page describes how the equation of motion is built from modular physics terms, how
+it is integrated in time, and how to use the results.  The <a href="../examples/forward_model/">forward model
+example</a> runs a complete simulation, and the
+<a href="../api/#simulation">API reference</a> documents every class.</p>
+<h2 id="running-a-simulation">Running a simulation<a class="headerlink" href="#running-a-simulation" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pwdsim</span>
+
+<span class="n">track</span> <span class="o">=</span> <span class="n">pwdsim</span><span class="o">.</span><span class="n">besttrack</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+<span class="n">car</span> <span class="o">=</span> <span class="n">pwdsim</span><span class="o">.</span><span class="n">SimpleCar</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>  <span class="c1"># see the Cars page</span>
+
+<span class="n">sim</span> <span class="o">=</span> <span class="n">pwdsim</span><span class="o">.</span><span class="n">Simulation</span><span class="p">(</span><span class="n">track</span><span class="p">,</span> <span class="n">car</span><span class="p">)</span>
+<span class="n">run</span> <span class="o">=</span> <span class="n">sim</span><span class="p">()</span>
+
+<span class="n">run</span><span class="o">.</span><span class="n">finish_time</span>  <span class="c1"># time for the front of the car to cross the finish line</span>
+<span class="n">run</span><span class="o">.</span><span class="n">finish_time</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>  <span class="c1"># gradients with respect to every car parameter</span>
+<span class="n">car</span><span class="o">.</span><span class="n">cg_</span><span class="o">.</span><span class="n">grad</span>
+</code></pre></div>
+<p>A <a class="autorefs autorefs-internal" href="../api/#pwdsim.simulation.Simulation"><code>Simulation</code></a> holds the track, the car, the
+physics terms, and the global parameters in an
+<a class="autorefs autorefs-internal" title="Environment
+
+
+  
+      dataclass
+  " href="../api/#pwdsim.physics.Environment"><code>Environment</code></a> (gravitational acceleration and air
+density).  Calling it places the car with its front against the start pin, at rest,
+and integrates the equation of motion.  It returns a <a class="autorefs autorefs-internal" href="../api/#pwdsim.simulation.Run"><code>Run</code></a>
+with the results.</p>
+<h2 id="coordinates">Coordinates<a class="headerlink" href="#coordinates" title="Permanent link">&para;</a></h2>
+<p>The car rides on the track with both axles in contact, so its motion has a single
+degree of freedom: <span class="arithmatex">\(s\)</span>, the location of the rear wheel contact along the track.  The
+state of the car is <span class="arithmatex">\((s, v)\)</span> with <span class="arithmatex">\(v = \dot{s}\)</span>.</p>
+<p>Everything else follows from the geometry.  The rear axle center sits one wheel
+radius off the track.  The front wheel contact <span class="arithmatex">\(\sigma(s)\)</span> is wherever the front
+axle center is exactly one wheelbase from the rear axle center, found with Newton's
+method.  The line between the axle centers sets the body frame and the pitch angle
+<span class="arithmatex">\(\phi(s)\)</span> of the car, which locate every point on the car, including its center of
+gravity <span class="arithmatex">\(\mathbf{x}_g(s)\)</span>.</p>
+<p>To compute the normal forces, the model also includes two coordinates that the
+simulation holds at zero: the lifts <span class="arithmatex">\(h_r\)</span> and <span class="arithmatex">\(h_f\)</span> of the rear and front axles off
+the track, along the track normal.  The generalized coordinates are
+<span class="arithmatex">\(q = (s, h_r, h_f)\)</span>.</p>
+<p><a class="autorefs autorefs-internal" href="../api/#pwdsim.kinematics.CarKinematics"><code>CarKinematics</code></a> computes the positions of points
+on the car analytically, together with their first three derivatives with respect to
+<span class="arithmatex">\(s\)</span> and their first derivatives with respect to the lifts.</p>
+<h2 id="equation-of-motion">Equation of motion<a class="headerlink" href="#equation-of-motion" title="Permanent link">&para;</a></h2>
+<p>The equation of motion follows from Lagrange's equations with a Rayleigh
+dissipation function <span class="arithmatex">\(F\)</span>:</p>
+<div class="arithmatex">\[
+\frac{d}{dt} \frac{\partial T}{\partial \dot{q}_i}
+- \frac{\partial T}{\partial q_i}
++ \frac{\partial V}{\partial q_i}
++ \frac{\partial F}{\partial \dot{q}_i} = Q_i,
+\]</div>
+<p>where <span class="arithmatex">\(T\)</span> is the kinetic energy and <span class="arithmatex">\(V\)</span> the potential energy.  The constraint forces
+<span class="arithmatex">\(Q_i\)</span> vanish along <span class="arithmatex">\(s\)</span> and are the normal forces along the lifts.</p>
+<h3 id="physics-terms">Physics terms<a class="headerlink" href="#physics-terms" title="Permanent link">&para;</a></h3>
+<p>The contributions to <span class="arithmatex">\(T\)</span>, <span class="arithmatex">\(V\)</span>, and <span class="arithmatex">\(F\)</span> are modular
+<a class="autorefs autorefs-internal" href="../api/#pwdsim.physics">physics terms</a>, each of one of three kinds:</p>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Base class</th>
+<th>Provides</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kinetic energy</td>
+<td><a class="autorefs autorefs-internal" href="../api/#pwdsim.physics.KineticTerm"><code>KineticTerm</code></a></td>
+<td>rates making up <span class="arithmatex">\(T\)</span></td>
+</tr>
+<tr>
+<td>Potential energy</td>
+<td><a class="autorefs autorefs-internal" href="../api/#pwdsim.physics.PotentialTerm"><code>PotentialTerm</code></a></td>
+<td><span class="arithmatex">\(V\)</span> and its derivatives</td>
+</tr>
+<tr>
+<td>Dissipation</td>
+<td><a class="autorefs autorefs-internal" href="../api/#pwdsim.physics.DissipativeTerm"><code>DissipativeTerm</code></a></td>
+<td>derivatives of <span class="arithmatex">\(F\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>The implemented terms are:</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Class</th>
+<th>Contribution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gravity</code></td>
+<td><a class="autorefs autorefs-internal" href="../api/#pwdsim.physics.Gravity"><code>Gravity</code></a></td>
+<td><span class="arithmatex">\(V = M g\, y_g\)</span></td>
+</tr>
+<tr>
+<td><code>translation</code></td>
+<td><a class="autorefs autorefs-internal" href="../api/#pwdsim.physics.Translation"><code>Translation</code></a></td>
+<td><span class="arithmatex">\(T = \tfrac{1}{2} M \lvert\dot{\mathbf{x}}_g\rvert^2\)</span></td>
+</tr>
+<tr>
+<td><code>body_rotation</code></td>
+<td><a class="autorefs autorefs-internal" href="../api/#pwdsim.physics.BodyRotation"><code>BodyRotation</code></a></td>
+<td><span class="arithmatex">\(T = \tfrac{1}{2} I_b \dot\phi^2\)</span></td>
+</tr>
+<tr>
+<td><code>wheel_spin</code></td>
+<td><a class="autorefs autorefs-internal" href="../api/#pwdsim.physics.WheelSpin"><code>WheelSpin</code></a></td>
+<td><span class="arithmatex">\(T = \tfrac{1}{2} n_r I_r \dot\Psi_r^2 + \tfrac{1}{2} n_f I_f \dot\Psi_f^2\)</span></td>
+</tr>
+<tr>
+<td><code>drag</code></td>
+<td><a class="autorefs autorefs-internal" href="../api/#pwdsim.physics.Drag"><code>Drag</code></a></td>
+<td><span class="arithmatex">\(F = \tfrac{1}{6} \rho C_d A \lvert\dot{\mathbf{x}}_g\rvert^3\)</span></td>
+</tr>
+<tr>
+<td><code>axle_friction</code></td>
+<td><a class="autorefs autorefs-internal" href="../api/#pwdsim.physics.AxleFriction"><code>AxleFriction</code></a></td>
+<td><span class="arithmatex">\(F = \sum_k \mu_k a_k N_k \lvert\dot\Psi_k - \dot\phi\rvert\)</span></td>
+</tr>
+<tr>
+<td><code>rolling_friction</code></td>
+<td><a class="autorefs autorefs-internal" href="../api/#pwdsim.physics.RollingFriction"><code>RollingFriction</code></a></td>
+<td><span class="arithmatex">\(F = c_r (N_r \lvert\dot s\rvert + N_f \lvert\dot\sigma\rvert)\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>Here <span class="arithmatex">\(\phi\)</span> is the pitch angle of the car and <span class="arithmatex">\(\Psi_r\)</span> and <span class="arithmatex">\(\Psi_f\)</span> are the rotation
+angles of the rear and front wheels.  In turn:</p>
+<ul>
+<li><strong>Drag</strong> acts at the center of gravity, a force of
+  <span class="arithmatex">\(\tfrac{1}{2} \rho C_d A \lvert\dot{\mathbf{x}}_g\rvert^2\)</span> opposing its motion.</li>
+<li><strong>Axle friction</strong> is a torque <span class="arithmatex">\(\mu N a\)</span> at each axle, opposing the spin of the
+  wheels relative to the car body.  At the wheel rim this is a force of about
+  <span class="arithmatex">\(\mu N a / r\)</span>.  The load on the axle is taken to be the normal force at the wheel
+  contact, neglecting the weight of the wheels.</li>
+<li><strong>Rolling friction</strong> is a force <span class="arithmatex">\(c_r N\)</span> at each wheel contact, opposing its motion
+  along the track.</li>
+</ul>
+<p>Two presets pick the terms: <a class="autorefs autorefs-internal" title="full_physics()" href="../api/#pwdsim.physics.full_physics"><code>full_physics</code></a> has them
+all, and is what a simulation uses by default, and
+<a class="autorefs autorefs-internal" title="simple_physics()" href="../api/#pwdsim.physics.simple_physics"><code>simple_physics</code></a> has only gravity and translation:
+a car rolling without friction or drag, with no rotational inertia.</p>
+<div class="highlight"><pre><span></span><code><span class="n">sim</span> <span class="o">=</span> <span class="n">pwdsim</span><span class="o">.</span><span class="n">Simulation</span><span class="p">(</span><span class="n">track</span><span class="p">,</span> <span class="n">car</span><span class="p">)</span>  <span class="c1"># full physics</span>
+<span class="n">simple</span> <span class="o">=</span> <span class="n">pwdsim</span><span class="o">.</span><span class="n">Simulation</span><span class="p">(</span><span class="n">track</span><span class="p">,</span> <span class="n">car</span><span class="p">,</span> <span class="n">physics</span><span class="o">=</span><span class="n">pwdsim</span><span class="o">.</span><span class="n">simple_physics</span><span class="p">())</span>
+</code></pre></div>
+<p>Terms are switched on and off by name:</p>
+<div class="highlight"><pre><span></span><code><span class="n">sim</span><span class="o">.</span><span class="n">disable</span><span class="p">(</span><span class="s2">"drag"</span><span class="p">)</span>
+<span class="n">sim</span><span class="o">.</span><span class="n">enable</span><span class="p">(</span><span class="s2">"drag"</span><span class="p">)</span>
+</code></pre></div>
+<p>A <a class="autorefs autorefs-internal" href="../api/#pwdsim.simulation.Run"><code>Run</code></a> keeps the terms it was simulated with, so switching
+terms afterwards doesn't change its results.  The
+<a href="../examples/physics_study/">which physics matters?</a> example uses this to measure
+what each term costs, and <a class="autorefs autorefs-internal" title="energy_by_term()" href="../api/#pwdsim.simulation.Run.energy_by_term"><code>Run.energy_by_term</code></a>
+to follow where the car's energy goes.</p>
+<h3 id="rates">Rates<a class="headerlink" href="#rates" title="Permanent link">&para;</a></h3>
+<p>Every kinetic energy in the model is a sum of squares of <em>rates</em>: quantities that
+are linear in the generalized velocities, <span class="arithmatex">\(\rho = J(q) \cdot \dot{q}\)</span>.  Examples are
+the components of the velocity of the center of gravity, the pitch rate of the body,
+and the spin rate of a wheel.  A rate with weight <span class="arithmatex">\(m\)</span> (a mass or a moment of inertia)
+contributes <span class="arithmatex">\(T = \tfrac{1}{2} m \rho^2\)</span>.</p>
+<p>For such a term the left side of Lagrange's equations reduces to
+<span class="arithmatex">\(m J_i \dot{\rho}\)</span>.  On the track, where only <span class="arithmatex">\(s\)</span> changes,
+<span class="arithmatex">\(\dot{\rho} = J_s a + J_s' v^2\)</span> with <span class="arithmatex">\(a = \ddot{s}\)</span>.  So a kinetic term only needs
+to supply <span class="arithmatex">\(J_s\)</span> and its derivatives with respect to <span class="arithmatex">\(s\)</span>, and the lift components
+<span class="arithmatex">\(J_{h_r}\)</span> and <span class="arithmatex">\(J_{h_f}\)</span> (and their derivatives with respect to <span class="arithmatex">\(s\)</span>, for the
+Jacobian).</p>
+<h3 id="rolling-wheels">Rolling wheels<a class="headerlink" href="#rolling-wheels" title="Permanent link">&para;</a></h3>
+<p>The wheels roll without slipping, so their rotation isn't an independent degree of
+freedom.  A wheel of radius <span class="arithmatex">\(r\)</span> with its contact at arc length <span class="arithmatex">\(c\)</span> has its center on
+the offset curve, moving <span class="arithmatex">\(1 - r\kappa\)</span> times as fast as the contact point, so it has
+turned through the angle</p>
+<div class="arithmatex">\[
+\Psi(c) = -\frac{c - r\theta(c)}{r}.
+\]</div>
+<p>The rear wheels have <span class="arithmatex">\(c = s\)</span> and the front wheels <span class="arithmatex">\(c = \sigma(q)\)</span>, the front contact.
+Since <span class="arithmatex">\(\Psi\)</span> is a function of the coordinates, the spin rate <span class="arithmatex">\(\dot\Psi\)</span> is a rate
+like any other.  Expressing the rolling constraint this way also keeps the normal
+forces clean: when an axle lifts (virtually) off the track, its wheels roll to
+stay aligned with their contact point, so the traction force at the contact does no
+work along the lift, and the constraint force along the lift is exactly the normal
+force.</p>
+<p>Summing the terms along <span class="arithmatex">\(s\)</span> gives</p>
+<div class="arithmatex">\[
+M(s)\, a + C(s)\, v^2 + V_s + D_s = 0, \qquad
+M = \sum m J_s^2, \quad C = \sum m J_s J_s',
+\]</div>
+<p>with <span class="arithmatex">\(V_s = \partial V / \partial s\)</span> and <span class="arithmatex">\(D_s = \partial F / \partial \dot{s}\)</span>.
+<span class="arithmatex">\(M(s)\)</span> is the effective mass of the car along the track.  This gives the
+acceleration <span class="arithmatex">\(a(s, v)\)</span>.  The time integration also needs the Jacobian of <span class="arithmatex">\(a\)</span> with
+respect to <span class="arithmatex">\(s\)</span> and <span class="arithmatex">\(v\)</span>, which uses the higher derivatives.  Every term provides its
+derivatives analytically, and the test suite checks each one against finite
+differences.</p>
+<h3 id="normal-forces">Normal forces<a class="headerlink" href="#normal-forces" title="Permanent link">&para;</a></h3>
+<p>Along the lifts, the constraint forces are the normal forces at each axle:</p>
+<div class="arithmatex">\[
+N_{r,f} = \sum m J_{h_{r,f}} \left(J_s a + J_s' v^2\right)
++ \frac{\partial V}{\partial h_{r,f}} + \frac{\partial F}{\partial \dot{h}_{r,f}}.
+\]</div>
+<p>Because they come from the same terms as the equation of motion, the normal forces
+automatically account for all the enabled physics.</p>
+<h3 id="friction-and-the-normal-forces">Friction and the normal forces<a class="headerlink" href="#friction-and-the-normal-forces" title="Permanent link">&para;</a></h3>
+<p>Axle and rolling friction are proportional to the normal forces, with Rayleigh
+functions of the form <span class="arithmatex">\(F = c N_k \lvert\rho\rvert\)</span> for a coefficient <span class="arithmatex">\(c\)</span> and a rate
+<span class="arithmatex">\(\rho\)</span>.  They contribute <span class="arithmatex">\(c_k N_k\)</span> to the equation of motion along <span class="arithmatex">\(s\)</span> and
+<span class="arithmatex">\(e_{jk} N_k\)</span> to the normal forces, so the equations of motion become a linear
+system for <span class="arithmatex">\(x = (a, N_r, N_f)\)</span> at each state:</p>
+<div class="arithmatex">\[
+\begin{aligned}
+M a + c_r N_r + c_f N_f &amp;= -\left(C v^2 + V_s + D^0_s\right), \\
+N_j - A_j a - \textstyle\sum_k e_{jk} N_k &amp;= B_j,
+\end{aligned}
+\]</div>
+<p>where <span class="arithmatex">\(D^0\)</span> is the dissipation that doesn't depend on the normal forces (drag), and
+<span class="arithmatex">\(A_j\)</span> and <span class="arithmatex">\(B_j\)</span> collect the inertial, potential, and drag contributions along the
+lifts.  <a class="autorefs autorefs-internal" href="../api/#pwdsim.simulation.EquationsOfMotion"><code>EquationsOfMotion</code></a> solves this 3×3
+system at every state.  Differentiating it, <span class="arithmatex">\(K x = b\)</span>, gives the Jacobian the time
+integration needs, <span class="arithmatex">\(x_{,s} = K^{-1}(b_{,s} - K_{,s}\, x)\)</span>, and likewise for <span class="arithmatex">\(v\)</span>.</p>
+<p>The sign of the friction force is regularized as <span class="arithmatex">\(\tanh(v / v_\mathrm{reg})\)</span>, with
+<span class="arithmatex">\(v_\mathrm{reg} = 1\)</span> mm/s by default, so the equation of motion stays smooth as the
+car starts from rest.</p>
+<p>A positive normal force pushes the car away from the track.  A negative one means
+the track would have to pull the wheels down to keep them on it.  In reality that
+wheel lifts off, which the model doesn't allow.  This happens, for example, to the
+front wheels of a car with its center of gravity close to the rear axle: as the car
+comes out of the curve it stops pitching up, and stopping the rotation of the body
+takes a torque that unloads the front wheels.  If a normal force goes negative
+before the finish, the simulation raises a
+<a class="autorefs autorefs-internal" href="../api/#pwdsim.simulation.LiftOffWarning"><code>LiftOffWarning</code></a>.
+<a class="autorefs autorefs-internal" title="min_normal_force
+
+  
+      property
+  " href="../api/#pwdsim.simulation.Run.min_normal_force"><code>Run.min_normal_force</code></a> reports the minimum
+normal forces, which an optimizer can use to avoid these designs.</p>
+<h2 id="time-integration">Time integration<a class="headerlink" href="#time-integration" title="Permanent link">&para;</a></h2>
+<p><a href="https://github.com/applied-material-modeling/pyzag">pyzag</a> integrates the equation
+of motion <span class="arithmatex">\(\dot{x} = (v, a)\)</span> on a fixed time grid, with step <code>dt</code> for a total time
+<code>duration</code>.  The default is the backward Euler method with <span class="arithmatex">\(dt = 0.1\)</span> ms.  Forward
+Euler is also available (<code>integrator="forward-euler"</code>).</p>
+<p>Both methods are first order: the error in the finish time is proportional to <span class="arithmatex">\(dt\)</span>.
+The backward Euler method also loses a little energy, about 0.03% of the starting
+energy over a run at the default step, again proportional to <span class="arithmatex">\(dt\)</span>.</p>
+<p>The first-order convergence relies on a smooth track.  A jump in the curvature or
+its first two derivatives adds an error to the step where an axle crosses it, and
+that error depends on where the crossing falls within the step.  This makes the
+finish time a slightly jagged function of the car's design, and its gradients
+noisy.  <a class="autorefs autorefs-internal" href="../api/#pwdsim.track.SplineTrack"><code>SplineTrack</code></a> keeps the curvature and its first
+two derivatives continuous to avoid this (see <a href="../tracks/">Track models</a>).</p>
+<div class="admonition note">
+<p class="admonition-title">Accuracy</p>
+<p>On the 42 ft BestTrack, the finish time at the default step is within about
+0.3 ms of the converged value, with the simple or the full physics.  Gradients
+of the finish time are stable to about 1% for steps of 0.2 ms and below,
+including small sensitivities like the one to the wheelbase (about 0.02 ms/in).
+Coarser steps can't resolve the 1 in easements on the track, and the gradients
+become noisy, especially with the full physics: the spin of the wheels depends
+directly on the curvature of the track.</p>
+</div>
+<p>pyzag solves blocks of time steps together (<code>block_size</code>, default 1000) to
+vectorize the calculation.</p>
+<h3 id="gradients">Gradients<a class="headerlink" href="#gradients" title="Permanent link">&para;</a></h3>
+<p>With <code>sim(adjoint=True)</code>, the default, gradients come from the adjoint method.  It
+costs about as much as one more simulation, and memory doesn't grow with the number
+of time steps.  Parameters with gradients turned off are skipped.  <code>sim(adjoint=False)</code>
+instead backpropagates through every time step, which is exact but uses much more
+memory.</p>
+<h3 id="batches-of-cars">Batches of cars<a class="headerlink" href="#batches-of-cars" title="Permanent link">&para;</a></h3>
+<p>A car whose properties have a batch dimension describes several designs (see
+<a href="../cars/">Cars</a>).  The simulation runs them all at once, and every result gets the
+same batch dimension:</p>
+<div class="highlight"><pre><span></span><code><span class="n">cg</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">]])</span> <span class="o">*</span> <span class="n">INCH</span>
+<span class="n">cars</span> <span class="o">=</span> <span class="n">pwdsim</span><span class="o">.</span><span class="n">SimpleCar</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">cg</span><span class="o">=</span><span class="n">cg</span><span class="p">)</span>
+<span class="n">pwdsim</span><span class="o">.</span><span class="n">Simulation</span><span class="p">(</span><span class="n">track</span><span class="p">,</span> <span class="n">cars</span><span class="p">)()</span><span class="o">.</span><span class="n">finish_time</span>  <span class="c1"># shape (3,)</span>
+</code></pre></div>
+<h2 id="results">Results<a class="headerlink" href="#results" title="Permanent link">&para;</a></h2>
+<p>A <a class="autorefs autorefs-internal" href="../api/#pwdsim.simulation.Run"><code>Run</code></a> holds the times and states and computes results
+from them:</p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>finish_time</code></td>
+<td>time for the front of the car to cross the finish line</td>
+</tr>
+<tr>
+<td><code>finish_speed</code></td>
+<td>speed of the center of gravity at the finish</td>
+</tr>
+<tr>
+<td><code>max_speed</code></td>
+<td>maximum speed of the center of gravity before the finish</td>
+</tr>
+<tr>
+<td><code>min_normal_force</code></td>
+<td>minimum normal forces at the rear and front axles before the finish</td>
+</tr>
+<tr>
+<td><code>speed()</code></td>
+<td>speed of the center of gravity at every step</td>
+</tr>
+<tr>
+<td><code>normal_forces()</code></td>
+<td>normal forces at every step</td>
+</tr>
+<tr>
+<td><code>energy()</code></td>
+<td>the energy budget at every step: kinetic, potential, dissipated, and total</td>
+</tr>
+<tr>
+<td><code>energy_by_term()</code></td>
+<td>the energy of each physics term at every step: stored for kinetic and potential terms, dissipated so far for dissipative terms</td>
+</tr>
+</tbody>
+</table>
+<p>The energy budget integrates the power dissipated by drag and friction, <span class="arithmatex">\(v D_s\)</span>,
+over the run.  The total of the kinetic, potential, and dissipated energy stays
+constant, up to the small energy loss of the time integration, which makes a
+useful check on a run.</p>
+<p>The finish time is interpolated within the step where the front of the car crosses
+the finish line, a vertical line through the track at <span class="arithmatex">\(s_\mathrm{finish}\)</span>.  The
+scalar results are differentiable.  Cars that don't finish within <code>duration</code> get a
+finish time of NaN and a <a class="autorefs autorefs-internal" href="../api/#pwdsim.simulation.DidNotFinishWarning"><code>DidNotFinishWarning</code></a>.</p>
+<p>The <a class="autorefs autorefs-internal" href="../api/#pwdsim.plotting"><code>plotting</code></a> module draws the results:</p>
+<ul>
+<li><a class="autorefs autorefs-internal" title="plot_run(run, labels=None, unit='m', axes=None)" href="../api/#pwdsim.plotting.plot_run"><code>plot_run</code></a>: speed over time and normal forces along
+  the track;</li>
+<li><a class="autorefs autorefs-internal" title="plot_runs(runs, labels=None, unit='m', axes=None)" href="../api/#pwdsim.plotting.plot_runs"><code>plot_runs</code></a>: the same, comparing several runs;</li>
+<li><a class="autorefs autorefs-internal" title="plot_energy(run, index=0, ax=None)" href="../api/#pwdsim.plotting.plot_energy"><code>plot_energy</code></a>: the energy budget;</li>
+<li><a class="autorefs autorefs-internal" title="plot_car(simulation, s, index=0, unit='in', margin=0.1, ax=None)" href="../api/#pwdsim.plotting.plot_car"><code>plot_car</code></a>: the car on the track at chosen locations,
+  at true scale.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>
