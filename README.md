@@ -83,12 +83,12 @@ print(car.cg_.grad * INCH * 1000)
 plot_run(run, unit="ft")
 ```
 
-The [forward model example](docs/examples/forward_model.py) walks through a
-complete simulation, and the [which physics matters?](docs/examples/physics_study.py)
+The [forward model example](https://reverendbedford.github.io/pwdsim/examples/forward_model/) walks through a
+complete simulation, and the [which physics matters?](https://reverendbedford.github.io/pwdsim/examples/physics_study/)
 example compares the effects of the different pieces of physics and ranks the car
 parameters by their effect on the finish time, and the
-[optimizing a car](docs/examples/optimization.py) example tunes a car's center of
-gravity and mass, and the [designing a car body](docs/examples/car_design.py)
+[optimizing a car](https://reverendbedford.github.io/pwdsim/examples/optimization/) example tunes a car's center of
+gravity and mass, and the [designing a car body](https://reverendbedford.github.io/pwdsim/examples/car_design/)
 example optimizes the shape of a car and the size and position of its weight.  The
 [docs](https://reverendbedford.github.io/pwdsim/) describe the model in detail.
 
@@ -144,11 +144,13 @@ gradients of the results with the adjoint method.
 
 ## Installation
 
-pwdsim requires Python 3.12 or later.
+pwdsim requires Python 3.12 or later.  Install it from PyPI:
 
 ```bash
-uv pip install -e .
+pip install pwdsim
 ```
+
+or, for development, from a clone of the repository (see below).
 
 ## Development
 
@@ -176,13 +178,23 @@ uv run mkdocs build --strict           # build the docs
 ### Continuous integration
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and push to
-`main`, with three jobs: **Pre-commit hooks** (every hook, on all files),
-**Tests** (`pytest --cov`), and **Example notebooks** (the slow notebook tests).
+`main`, with four jobs: **Pre-commit hooks** (every hook, on all files),
+**Tests** (`pytest --cov`), **Example notebooks** (the slow notebook tests), and
+**Package**, which builds the sdist and wheel, checks them, and runs the tests
+against the installed wheel.
 
 The docs workflow (`.github/workflows/docs.yml`) builds the docs and publishes them
 to GitHub Pages, at <https://reverendbedford.github.io/pwdsim/>, whenever `main`
 changes.  Each pull request gets a preview of its docs, linked from a comment on the
 pull request and removed when it closes.
+
+### Releases
+
+The version comes from the git tags (with hatch-vcs), so there's nothing to bump by
+hand.  To release, create a GitHub release on `main` with a new tag `vX.Y.Z`.  The
+release workflow (`.github/workflows/release.yml`) checks the tag, builds and tests
+the package, and publishes it to PyPI with trusted publishing.  Between releases,
+builds get development versions such as `0.1.1.dev3`.
 
 ### Example notebooks
 
@@ -199,4 +211,4 @@ so these tests only run with `uv run pytest --runslow`.
 
 ## License
 
-MIT; see [LICENSE](LICENSE).
+MIT; see [LICENSE](https://github.com/reverendbedford/pwdsim/blob/main/LICENSE).

@@ -15,6 +15,8 @@ Generally we expect users to use notebooks to interface with the package to actu
 
 A simple modern python package. Python 3.12, uv for environment and dependency management, src layout (`src/pwdsim`).  ruff for linting, pytest for testing, coverage.py for coverage checking, mkdocs for docs.  Pre-commit hooks to enforce basic formatting and linting.
 
+CI (`.github/workflows/`): `ci.yml` runs the hooks, tests, notebooks, and `package.yml` (build the sdist and wheel, test the installed wheel) on every PR; `docs.yml` publishes the docs to GitHub Pages, with PR previews; `release.yml` publishes a GitHub release to PyPI by trusted publishing.  The version comes from the git tag (hatch-vcs), so never set it in `pyproject.toml`.
+
 Example notebooks live in `docs/examples/` as jupytext percent-format `.py` scripts (never commit `.ipynb` files).  mkdocs-jupyter executes them when building the docs, and `tests/test_examples.py` runs them as smoke tests, marked slow: they only run with `pytest --runslow`.
 
 Use float64 throughout the simulation.  Close races differ by ~1 ms over ~2.5 s, so float32 is too noisy for finish times and their gradients.

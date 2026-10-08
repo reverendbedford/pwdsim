@@ -1,0 +1,46 @@
+name: Release
+
+# Publishes a GitHub release to PyPI.  The release's tag (vX.Y.Z) sets the version,
+# and must be on main.  PyPI trusts this workflow directly (trusted publishing), so
+# there is no API token.
+on:
+  release:
+    types: [published]
+
+jobs:
+  check:
+    name: Check the tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check that the tag is vX.Y.Z on main
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([abc]|rc)?[0-9]*$ ]] \
+            || { echo "::error::Tag $TAG is not of the form vX.Y.Z"; exit 1; }
+          git merge-base --is-ancestor "$TAG" origin/main \
+            || { echo "::error::Tag $TAG is not on main"; exit 1; }
+
+  package:
+    name: Package
+    needs: check
+    uses: ./.github/workflows/package.yml
+
+  publish:
+    name: Publish to PyPI
+    needs: package
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/pwdsim/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

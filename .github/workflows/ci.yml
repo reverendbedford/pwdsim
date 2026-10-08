@@ -44,3 +44,7 @@ jobs:
           enable-cache: true
       - run: uv sync --locked
       - run: uv run pytest --runslow tests/test_examples.py
+
+  package:
+    name: Package
+    uses: ./.github/workflows/package.yml
