@@ -116,3 +116,6 @@ pwdsim requires Python 3.12 or later.
 ```bash
 uv pip install -e .
 ```
+
+!!! info "Preview test"
+    This note only exists in the docs preview test pull request.
